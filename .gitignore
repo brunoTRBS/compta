@@ -1,0 +1,6 @@
+# Claude
+CLAUDE.md
+.claude/**
+
+# Streamlit
+.streamlit/secrets.toml
