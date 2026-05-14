@@ -8,6 +8,9 @@ CLAUDE.md
 # Environnement local
 .env
 
+# Supabase CLI
+supabase/.temp/
+
 # Python
 __pycache__/
 *.py[cod]
