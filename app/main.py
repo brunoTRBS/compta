@@ -6,8 +6,11 @@ Lancer avec : streamlit run app/main.py
 import sys
 from pathlib import Path
 
-# Garantit que 'src/' et 'app/' sont importables depuis toutes les pages
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Ajoute la racine du projet EN FIN de sys.path pour que les packages installés
+# (ex: supabase-py) soient trouvés avant le dossier local supabase/ de la CLI.
+_project_root = str(Path(__file__).parent.parent)
+if _project_root not in sys.path:
+    sys.path.append(_project_root)
 
 import streamlit as st
 

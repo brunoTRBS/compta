@@ -3,7 +3,8 @@
 
 streamlit>=1.35,<2
 polars>=0.20,<2
-supabase>=2.4,<3
+# Pinned < 2.10 : storage3 >= 2.x tire pyiceberg qui nécessite Visual C++ (pas de wheel Python 3.14)
+supabase>=2.4,<2.10
 connectorx>=0.3,<1
 adbc-driver-postgresql>=0.10,<1
 plotly>=5.20,<6
