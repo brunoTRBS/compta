@@ -35,12 +35,12 @@ L'application répond à deux besoins majeurs :
 - Matching Intelligent : Système de règles pour catégoriser automatiquement les dépenses récurrentes.
 - Saisie Manuelle : Possibilité d'ajouter des transactions (espèces) ou d'ajuster des imports via une interface tableur.
 
-### Structure du Repo
+## Structure du Repo
 - app/ : Fichiers de l'application Streamlit (Pages et Components).
 - src/ : Logique métier et transformations Polars.
 - tests/ : Suite de tests Pytest.
 - infra/ : Scripts SQL pour Supabase.
 - .claude/skills/ : Instructions spécialisées pour l'IA.
 
-### Sécurité
+## Sécurité
 Les secrets et clés d'API ne doivent jamais être poussés sur ce dépôt. Utilisez le fichier .streamlit/secrets.toml en local et les "Secrets" sur Streamlit Cloud.
