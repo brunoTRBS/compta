@@ -20,7 +20,8 @@ L'application répond à deux besoins majeurs :
 ## Spécifications Fonctionnelles
 ### Gestion Multi-Activité (Business)
 - Séparation des flux : Chaque transaction doit être affectée à l'Activité A, l'Activité B ou au Perso.
-- Tableau de bord Business : - Calcul du CA encaissé par période.
+- Tableau de bord Business : 
+  - Calcul du CA encaissé par période.
   - Estimation automatique des cotisations sociales (calculé selon le taux spécifique de chaque activité).
   - Visualisation de la marge réelle après frais et charges.
 
