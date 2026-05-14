@@ -1,6 +1,12 @@
-streamlit
-polars
-supabase
-connectorx
-adbc-driver-postgresql
-plotly
+# Dépendances de production — Streamlit Cloud
+# Contraintes de version : >= version testée, < prochaine major breaking change
+
+streamlit>=1.35,<2
+polars>=0.20,<2
+supabase>=2.4,<3
+connectorx>=0.3,<1
+adbc-driver-postgresql>=0.10,<1
+plotly>=5.20,<6
+stripe>=8.0,<10
+requests>=2.31,<3
+python-dotenv>=1.0,<2

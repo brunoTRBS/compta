@@ -4,3 +4,20 @@ CLAUDE.md
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Environnement local
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.coverage
+htmlcov/
