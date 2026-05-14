@@ -11,6 +11,37 @@ L'application répond à deux besoins majeurs :
   - "Booth in Lyon" : activité de location de photobooth.
 - Pilotage Personnel : Suivi des dépenses par catégories, capacité d'épargne et état des lieux des actifs sur différents comptes bancaires d'un couple.
 
+## Lancer l'application
+
+```bash
+# Installer les dépendances
+pip install -r requirements.txt
+
+# Démarrer l'app (point d'entrée unique)
+python -m streamlit run app/main.py
+```
+
+## Structure du projet
+
+```
+app/
+  main.py          ← point d'entrée Streamlit (streamlit run app/main.py)
+  pages/           ← pages multi-page (1_Phi_Rising.py … 7_Settings.py)
+  components/      ← composants UI réutilisables
+src/
+  config.py        ← constantes métier (taux URSSAF, enums)
+  logic/           ← transformations Polars (urssaf, revenue, budget…)
+  services/        ← couche d'accès aux données (supabase, db_reader, gocardless, stripe)
+  utils/           ← utilitaires (health checks)
+infra/
+  migrations/      ← schéma SQL Supabase (001→004)
+  seeds/           ← données de référence (catégories, taux URSSAF)
+supabase/          ← config CLI Supabase (dev local)
+tests/
+  unit/            ← tests Polars / logique métier
+  integration/     ← tests services mockés
+```
+
 ## Stack Technique
 - Frontend : Streamlit
 - Processing : Polars
