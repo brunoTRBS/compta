@@ -50,24 +50,3 @@ VERSEMENT_LIBERATOIRE_RATES: dict[BusinessId, Decimal] = {
     BusinessId.BOOTH_IN_LYON: Decimal("0.017"),  # 1.7 % BIC services
 }
 
-# ---------------------------------------------------------------------------
-# Catégories de transactions (référence partagée)
-# ---------------------------------------------------------------------------
-INCOME_CATEGORIES: frozenset[str] = frozenset({
-    "revenue",
-    "refund_received",
-})
-
-EXPENSE_CATEGORIES: frozenset[str] = frozenset({
-    "office_supplies",
-    "transport",
-    "meals",
-    "software",
-    "marketing",
-    "rent",
-    "utilities",
-    "groceries",
-    "leisure",
-    "savings",
-    "other",
-})

@@ -1,12 +1,95 @@
-"""Page Paramètres & Statut — diagnostic des connexions et gestion du cache."""
+"""Page Paramètres — gestion des catégories, statut des connexions, cache."""
 
 import streamlit as st
 
 from src.services.db_reader import invalidate_cache
+from src.services.supabase import delete_category, fetch_categories, insert_category
 from src.utils.health import HealthStatus, run_all_checks
 
 st.set_page_config(page_title="Paramètres", page_icon="⚙️", layout="wide")
 st.title("Paramètres & Statut")
+
+# ---------------------------------------------------------------------------
+# Gestion des catégories
+# ---------------------------------------------------------------------------
+st.subheader("Gestion des catégories")
+st.caption("Créez, consultez et supprimez les catégories disponibles par activité.")
+
+_BUSINESSES = {
+    "Phi Rising": "phi_rising",
+    "Booth in Lyon": "booth_in_lyon",
+    "Perso": "personal",
+}
+
+tab_phi, tab_booth, tab_perso = st.tabs(list(_BUSINESSES.keys()))
+
+for tab, (label, biz_id) in zip([tab_phi, tab_booth, tab_perso], _BUSINESSES.items()):
+    with tab:
+        cats = fetch_categories(business_id=biz_id)
+        expenses = [c for c in cats if c["direction"] == "expense"]
+        incomes = [c for c in cats if c["direction"] == "income"]
+
+        col_exp, col_inc = st.columns(2)
+
+        with col_exp:
+            st.markdown("**Dépenses**")
+            if expenses:
+                for cat in expenses:
+                    c_name, c_del = st.columns([5, 1])
+                    c_name.write(cat["name"])
+                    if c_del.button("✕", key=f"del_{cat['id']}", help="Supprimer"):
+                        delete_category(cat["id"])
+                        invalidate_cache()
+                        st.rerun()
+            else:
+                st.caption("Aucune catégorie de dépense.")
+
+        with col_inc:
+            st.markdown("**Revenus**")
+            if incomes:
+                for cat in incomes:
+                    c_name, c_del = st.columns([5, 1])
+                    c_name.write(cat["name"])
+                    if c_del.button("✕", key=f"del_{cat['id']}", help="Supprimer"):
+                        delete_category(cat["id"])
+                        invalidate_cache()
+                        st.rerun()
+            else:
+                st.caption("Aucune catégorie de revenu.")
+
+        st.markdown("---")
+        st.markdown("**Nouvelle catégorie**")
+
+        with st.form(key=f"form_cat_{biz_id}", clear_on_submit=True):
+            col_name, col_dir, col_submit = st.columns([4, 2, 1])
+            new_name = col_name.text_input(
+                "Nom",
+                placeholder="Nom de la catégorie",
+                label_visibility="collapsed",
+                key=f"cat_name_{biz_id}",
+            )
+            new_direction = col_dir.selectbox(
+                "Direction",
+                options=["expense", "income"],
+                format_func=lambda x: "Dépense" if x == "expense" else "Revenu",
+                label_visibility="collapsed",
+                key=f"cat_dir_{biz_id}",
+            )
+            submitted = col_submit.form_submit_button("Ajouter", use_container_width=True)
+
+        if submitted:
+            if not new_name.strip():
+                st.error("Le nom de la catégorie ne peut pas être vide.")
+            else:
+                try:
+                    insert_category(biz_id, new_name.strip(), new_direction)
+                    invalidate_cache()
+                    st.toast(f"Catégorie « {new_name.strip()} » ajoutée.", icon="✅")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Erreur : {exc}")
+
+st.divider()
 
 # ---------------------------------------------------------------------------
 # Statut des connexions

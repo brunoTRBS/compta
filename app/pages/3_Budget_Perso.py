@@ -9,7 +9,7 @@ from src.config import BusinessId
 from src.logic.budget import breakdown_by_category, compute_budget_summary
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
 from src.logic.revenue import aggregate_monthly
-from src.services.db_reader import invalidate_cache, read_transactions
+from src.services.db_reader import invalidate_cache, read_categories, read_transactions
 from src.services.supabase import bulk_update_categories, fetch_categorization_rules
 from app.components.transaction_table import render_transaction_table
 
@@ -128,6 +128,9 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.subheader("Catégorisation")
 
+cat_df = read_categories(business_id=str(BusinessId.PERSONAL))
+_categories = sorted(cat_df["name"].to_list())
+
 stats = categorization_stats(df)
 sc1, sc2, sc3 = st.columns(3)
 sc1.metric("Total transactions", stats["total"])
@@ -161,7 +164,7 @@ if not pending.is_empty():
         bulk_update_categories(updates)
         invalidate_cache()
 
-    render_transaction_table(pending, key="pending_perso", on_save=_save_pending)
+    render_transaction_table(pending, key="pending_perso", categories=_categories, on_save=_save_pending)
 else:
     st.success("✅ Toutes les transactions sont catégorisées.")
 
@@ -175,4 +178,4 @@ with st.expander("Voir toutes les transactions", expanded=False):
         bulk_update_categories(updates)
         invalidate_cache()
 
-    render_transaction_table(df, key="all_perso", on_save=_save_all)
+    render_transaction_table(df, key="all_perso", categories=_categories, on_save=_save_all)

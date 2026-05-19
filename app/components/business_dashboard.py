@@ -8,7 +8,7 @@ import streamlit as st
 
 from src.config import BusinessId
 from src.logic.revenue import aggregate_monthly, compute_ytd_summary
-from src.services.db_reader import invalidate_cache, read_transactions
+from src.services.db_reader import invalidate_cache, read_categories, read_transactions
 from src.services.supabase import bulk_update_categories
 
 from app.components.transaction_table import render_transaction_table
@@ -149,4 +149,6 @@ def render_dashboard(business_id: BusinessId, business_name: str) -> None:
         bulk_update_categories(updates)
         invalidate_cache()
 
-    render_transaction_table(df, key=f"table_{business_id}", on_save=save_categories)
+    cat_df = read_categories(business_id=str(business_id))
+    categories = sorted(cat_df["name"].to_list())
+    render_transaction_table(df, key=f"table_{business_id}", categories=categories, on_save=save_categories)

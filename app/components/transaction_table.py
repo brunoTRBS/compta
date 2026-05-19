@@ -5,14 +5,11 @@ from typing import Callable
 import polars as pl
 import streamlit as st
 
-from src.config import EXPENSE_CATEGORIES, INCOME_CATEGORIES
-
-_ALL_CATEGORIES = sorted(INCOME_CATEGORIES | EXPENSE_CATEGORIES)
-
 
 def render_transaction_table(
     df: pl.DataFrame,
     key: str,
+    categories: list[str],
     on_save: Callable[[list[dict]], None] | None = None,
 ) -> pl.DataFrame:
     """Affiche un st.data_editor sur les transactions avec catégorie éditable.
@@ -20,6 +17,7 @@ def render_transaction_table(
     Args:
         df: DataFrame de transactions (colonnes attendues : id, date, label, amount, source, category).
         key: Clé unique pour le widget (évite les conflits entre pages).
+        categories: Liste des catégories disponibles dans le selectbox.
         on_save: Callback appelé avec la liste des {id, category} modifiés.
 
     Returns:
@@ -43,7 +41,7 @@ def render_transaction_table(
             "source": st.column_config.TextColumn("Source", width="small"),
             "category": st.column_config.SelectboxColumn(
                 "Catégorie",
-                options=_ALL_CATEGORIES,
+                options=categories,
                 required=False,
                 width="medium",
             ),

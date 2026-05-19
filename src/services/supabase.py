@@ -155,3 +155,37 @@ def fetch_categorization_rules() -> list[dict[str, Any]]:
         .execute()
         .data
     )
+
+
+# ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+def fetch_categories(
+    business_id: str | None = None,
+    direction: str | None = None,
+) -> list[dict[str, Any]]:
+    """Récupère les catégories (sans cache — toujours à jour)."""
+    client = get_supabase()
+    query = client.table("categories").select("*").order("name")
+    if business_id is not None:
+        query = query.eq("business_id", business_id)
+    if direction is not None:
+        query = query.eq("direction", direction)
+    return query.execute().data
+
+
+def insert_category(business_id: str, name: str, direction: str) -> dict[str, Any]:
+    """Crée une nouvelle catégorie."""
+    result = (
+        get_supabase()
+        .table("categories")
+        .insert({"business_id": business_id, "name": name, "direction": direction})
+        .execute()
+    )
+    return result.data[0]
+
+
+def delete_category(category_id: str) -> None:
+    """Supprime une catégorie par son id."""
+    get_supabase().table("categories").delete().eq("id", category_id).execute()

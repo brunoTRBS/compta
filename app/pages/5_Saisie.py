@@ -5,14 +5,9 @@ from datetime import date
 import polars as pl
 import streamlit as st
 
-from src.config import (
-    EXPENSE_CATEGORIES,
-    INCOME_CATEGORIES,
-    BusinessId,
-    TransactionSource,
-)
+from src.config import BusinessId, TransactionSource
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
-from src.services.db_reader import invalidate_cache, read_transactions
+from src.services.db_reader import invalidate_cache, read_categories, read_transactions
 from src.services.supabase import (
     bulk_update_categories,
     delete_transaction,
@@ -25,11 +20,20 @@ from app.components.transaction_table import render_transaction_table
 st.set_page_config(page_title="Saisie & Corrections", page_icon="✏️", layout="wide")
 st.title("Saisie & Corrections")
 
-_ALL_CATEGORIES = sorted(INCOME_CATEGORIES | EXPENSE_CATEGORIES)
 _BUSINESS_LABELS = {
     "Phi Rising": str(BusinessId.PHI_RISING),
     "Booth in Lyon": str(BusinessId.BOOTH_IN_LYON),
     "Perso": str(BusinessId.PERSONAL),
+}
+
+# Catégories chargées une fois pour toute la page
+_all_cats_df = read_categories()
+_all_category_names = sorted(_all_cats_df["name"].to_list()) if not _all_cats_df.is_empty() else []
+_cats_by_biz: dict[str, list[str]] = {
+    biz_id: sorted(
+        _all_cats_df.filter(pl.col("business_id") == biz_id)["name"].to_list()
+    )
+    for biz_id in [str(BusinessId.PHI_RISING), str(BusinessId.BOOTH_IN_LYON), str(BusinessId.PERSONAL)]
 }
 
 tab_new, tab_pending, tab_edit = st.tabs(
@@ -59,7 +63,7 @@ with tab_new:
         tx_business_label = col_biz.selectbox("Activité", list(_BUSINESS_LABELS.keys()))
         tx_category = col_cat.selectbox(
             "Catégorie",
-            ["— Laisser vide —"] + _ALL_CATEGORIES,
+            ["— Laisser vide —"] + _all_category_names,
         )
         tx_notes = st.text_area("Notes (optionnel)", height=68, max_chars=500)
 
@@ -150,7 +154,8 @@ with tab_pending:
                 bulk_update_categories(updates)
                 invalidate_cache()
 
-            render_transaction_table(pending_df, key="pending_queue", on_save=_save_pending)
+            pending_cats = _cats_by_biz.get(pending_biz_id or "", _all_category_names)
+            render_transaction_table(pending_df, key="pending_queue", categories=pending_cats, on_save=_save_pending)
         else:
             st.success("✅ Toutes les transactions sont catégorisées.")
     else:
@@ -208,7 +213,9 @@ with tab_edit:
                 "label": st.column_config.TextColumn("Libellé", width="large"),
                 "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €"),
                 "category": st.column_config.SelectboxColumn(
-                    "Catégorie", options=_ALL_CATEGORIES, required=False
+                    "Catégorie",
+                    options=_cats_by_biz.get(edit_biz_id, _all_category_names),
+                    required=False,
                 ),
                 "notes": st.column_config.TextColumn("Notes"),
             },
