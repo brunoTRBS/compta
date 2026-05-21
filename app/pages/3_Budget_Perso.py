@@ -97,7 +97,7 @@ with col_left:
         )
         fig.update_traces(texttemplate="%{text:.1f} %", textposition="outside")
         fig.update_layout(yaxis=dict(autorange="reversed"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.info("Aucune dépense catégorisée sur la période.")
 
@@ -117,7 +117,7 @@ with col_right:
             markers=True,
             color_discrete_map={"revenue": "#2ecc71", "expenses": "#e74c3c"},
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch')
     else:
         st.info("Pas encore de données pour le graphique mensuel.")
 
@@ -142,7 +142,7 @@ pending = get_pending_categorization(df)
 if not pending.is_empty():
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
-        if st.button("⚡ Appliquer les règles auto", use_container_width=True):
+        if st.button("⚡ Appliquer les règles auto", width='stretch'):
             rules = fetch_categorization_rules()
             auto_df = apply_rules(pending, rules)
             updates = [

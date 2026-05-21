@@ -77,7 +77,7 @@ with col_left:
             texttemplate="%{label}<br>%{value:,.0f} €",
             textposition="outside",
         )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width='stretch')
     else:
         st.info("Aucun compte configuré.")
 
@@ -97,7 +97,7 @@ with col_right:
                 "owner": "Périmètre", "currency": "Devise", "balance": "Solde (€)",
             })
         )
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, width='stretch', hide_index=True)
     else:
         st.info("Aucun compte à afficher.")
 
@@ -129,7 +129,7 @@ if evolution_df is not None and not evolution_df.is_empty():
         markers=True,
     )
     fig_line.update_layout(yaxis_tickformat=",.0f")
-    st.plotly_chart(fig_line, use_container_width=True)
+    st.plotly_chart(fig_line, width='stretch')
 else:
     st.info(
         "Pas encore d'historique de soldes. "
@@ -159,7 +159,7 @@ else:
             format="%.2f",
             key="form_balance",
         )
-        submit = st.form_submit_button("Enregistrer le solde", use_container_width=True)
+        submit = st.form_submit_button("Enregistrer le solde", width='stretch')
 
     if submit:
         account_id = account_options[selected_account_label]

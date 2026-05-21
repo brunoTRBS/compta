@@ -67,7 +67,7 @@ with tab_new:
         )
         tx_notes = st.text_area("Notes (optionnel)", height=68, max_chars=500)
 
-        submitted = st.form_submit_button("Ajouter la transaction", use_container_width=True)
+        submitted = st.form_submit_button("Ajouter la transaction", width='stretch')
 
     if submitted:
         if not tx_label.strip():
@@ -129,7 +129,7 @@ with tab_pending:
         if not pending_df.is_empty():
             col_auto, col_info = st.columns([1, 3])
             with col_auto:
-                if st.button("⚡ Catégoriser automatiquement", use_container_width=True):
+                if st.button("⚡ Catégoriser automatiquement", width='stretch'):
                     rules = fetch_categorization_rules()
                     auto_df = apply_rules(pending_df, rules)
                     updates = [
@@ -204,7 +204,7 @@ with tab_edit:
         edited = st.data_editor(
             display_df,
             key=f"editor_{edit_biz_id}_{edit_year}",
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             disabled=["id"],
             column_config={
@@ -227,7 +227,7 @@ with tab_edit:
         col_save, col_del, col_reset = st.columns([2, 1, 1])
 
         with col_save:
-            if st.button("💾 Sauvegarder les modifications", use_container_width=True, type="primary"):
+            if st.button("💾 Sauvegarder les modifications", width='stretch', type="primary"):
                 origin_map = {row["id"]: row for row in st.session_state[origin_key]}
                 changed = []
                 for row in edited.iter_rows(named=True):
@@ -273,7 +273,7 @@ with tab_edit:
 
         with col_reset:
             st.write("")
-            if st.button("↩️ Annuler les modifications", use_container_width=True):
+            if st.button("↩️ Annuler les modifications", width='stretch'):
                 if origin_key in st.session_state:
                     del st.session_state[origin_key]
                 st.rerun()

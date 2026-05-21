@@ -6,6 +6,7 @@ filtres complexes). Les données sont mises en cache par Streamlit.
 Les ÉCRITURES restent dans supabase.py.
 """
 
+from datetime import date as Date
 from typing import Literal
 
 import polars as pl
@@ -22,18 +23,26 @@ def read_transactions(
     business_id: str | None = None,
     year: int | None = None,
     month: int | None = None,
+    date_from: Date | None = None,
+    date_to: Date | None = None,
 ) -> pl.DataFrame:
     """Lit les transactions depuis PostgreSQL via connectorx.
 
     Retourne un DataFrame Polars typé. Les filtres sont appliqués au niveau SQL.
+    date_from/date_to prennent priorité sur year/month quand fournis.
     """
     conditions: list[str] = []
     if business_id is not None:
         conditions.append(f"business_id = '{business_id}'")
-    if year is not None:
-        conditions.append(f"EXTRACT(YEAR FROM date) = {year}")
-    if month is not None:
-        conditions.append(f"EXTRACT(MONTH FROM date) = {month}")
+    if date_from is not None:
+        conditions.append(f"date >= '{date_from.isoformat()}'")
+    if date_to is not None:
+        conditions.append(f"date <= '{date_to.isoformat()}'")
+    if date_from is None and date_to is None:
+        if year is not None:
+            conditions.append(f"EXTRACT(YEAR FROM date) = {year}")
+        if month is not None:
+            conditions.append(f"EXTRACT(MONTH FROM date) = {month}")
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"""

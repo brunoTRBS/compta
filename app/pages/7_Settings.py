@@ -75,7 +75,7 @@ for tab, (label, biz_id) in zip([tab_phi, tab_booth, tab_perso], _BUSINESSES.ite
                 label_visibility="collapsed",
                 key=f"cat_dir_{biz_id}",
             )
-            submitted = col_submit.form_submit_button("Ajouter", use_container_width=True)
+            submitted = col_submit.form_submit_button("Ajouter", width='stretch')
 
         if submitted:
             if not new_name.strip():
@@ -100,7 +100,7 @@ _STATUS_CACHE_KEY = "_settings_health"
 
 col_check, _ = st.columns([1, 3])
 with col_check:
-    if st.button("🔄 Vérifier les connexions", use_container_width=True):
+    if st.button("🔄 Vérifier les connexions", width='stretch'):
         with st.spinner("Tests en cours…"):
             st.session_state[_STATUS_CACHE_KEY] = run_all_checks()
 
@@ -137,7 +137,7 @@ st.caption(
 
 col_cache1, col_cache2 = st.columns([1, 3])
 with col_cache1:
-    if st.button("🗑️ Vider le cache", use_container_width=True):
+    if st.button("🗑️ Vider le cache", width='stretch'):
         invalidate_cache()
         if _STATUS_CACHE_KEY in st.session_state:
             del st.session_state[_STATUS_CACHE_KEY]

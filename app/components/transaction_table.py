@@ -30,7 +30,7 @@ def render_transaction_table(
     edited = st.data_editor(
         display_df,
         key=key,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         disabled=[c for c in available_cols if c != "category"],
         column_config={

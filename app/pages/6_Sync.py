@@ -85,7 +85,7 @@ with st.expander("Configuration GoCardless", expanded=True):
         st.write("")
         st.write("")
         sync_bank = st.button(
-            "Synchroniser", key="btn_bank", type="primary", use_container_width=True
+            "Synchroniser", key="btn_bank", type="primary", width='stretch'
         )
 
 if sync_bank:
@@ -141,7 +141,7 @@ with st.expander("Configuration Stripe", expanded=True):
         st.write("")
         st.write("")
         sync_stripe = st.button(
-            "Synchroniser", key="btn_stripe", type="primary", use_container_width=True
+            "Synchroniser", key="btn_stripe", type="primary", width='stretch'
         )
 
 if sync_stripe:
