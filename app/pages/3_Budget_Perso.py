@@ -7,9 +7,11 @@ from datetime import date
 
 from src.config import BusinessId
 from src.logic.budget import breakdown_by_category, compute_budget_summary
+from app.components.auth import require_auth
 from src.services.db_reader import read_transactions
 
 st.set_page_config(page_title="Budget Perso", page_icon="💰", layout="wide")
+require_auth()
 st.title("Budget Personnel")
 
 _MONTH_LABELS = {

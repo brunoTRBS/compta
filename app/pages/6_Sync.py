@@ -10,8 +10,10 @@ from src.logic.import_pipeline import run_full_pipeline
 from src.services.db_reader import invalidate_cache, read_transactions
 from src.services.gocardless import fetch_transactions, list_accounts, map_transaction
 from src.services.stripe_client import fetch_payment_intents, map_payment_intent
+from app.components.auth import require_auth
 
 st.set_page_config(page_title="Synchronisation", page_icon="🔄", layout="wide")
+require_auth()
 st.title("Synchronisation des données")
 st.caption("Importe les transactions bancaires (GoCardless) et les paiements (Stripe).")
 

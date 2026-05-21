@@ -16,8 +16,10 @@ from src.services.db_reader import (
     read_patrimoine_evolution,
 )
 from src.services.supabase import fetch_accounts, update_account_balance
+from app.components.auth import require_auth
 
 st.set_page_config(page_title="Patrimoine", page_icon="🏦", layout="wide")
+require_auth()
 st.title("Bilan Patrimonial")
 
 _OWNER_LABELS = {

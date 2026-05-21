@@ -14,12 +14,16 @@ if _project_root not in sys.path:
 
 import streamlit as st
 
+from app.components.auth import require_auth
+
 st.set_page_config(
     page_title="Compta Pro & Perso",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+require_auth()
 
 st.title("Compta Pro & Perso")
 st.caption("Gestion comptable — Phi Rising · Booth in Lyon · Budget personnel")

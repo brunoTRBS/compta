@@ -5,8 +5,10 @@ import streamlit as st
 from src.services.db_reader import invalidate_cache
 from src.services.supabase import delete_category, fetch_categories, insert_category
 from src.utils.health import HealthStatus, run_all_checks
+from app.components.auth import require_auth
 
 st.set_page_config(page_title="Paramètres", page_icon="⚙️", layout="wide")
+require_auth()
 st.title("Paramètres & Statut")
 
 # ---------------------------------------------------------------------------

@@ -15,9 +15,11 @@ from src.services.supabase import (
     insert_transaction,
     update_transaction,
 )
+from app.components.auth import require_auth
 from app.components.transaction_table import render_transaction_table
 
 st.set_page_config(page_title="Saisie & Corrections", page_icon="✏️", layout="wide")
+require_auth()
 st.title("Saisie & Corrections")
 
 _BUSINESS_LABELS = {
