@@ -6,6 +6,7 @@ Usage : appeler require_auth() en tête de chaque page.
 import time
 
 import streamlit as st
+from gotrue.errors import AuthApiError
 
 from src.services.supabase import get_supabase
 
@@ -18,6 +19,16 @@ def require_auth() -> None:
     Affiche le formulaire de login et appelle st.stop() si non connecté.
     Doit être appelé avant tout autre code dans chaque page.
     """
+    if str(st.secrets.get("DEV_MODE", "false")).lower() == "true":
+        if not st.session_state.get(_SESSION_KEY):
+            st.session_state[_SESSION_KEY] = {
+                "access_token": "dev-mode",
+                "expires_at": time.time() + 86400,
+                "user_email": "dev@local",
+            }
+        _show_logout_button()
+        return
+
     session = st.session_state.get(_SESSION_KEY)
 
     if session is not None:
@@ -55,8 +66,10 @@ def _render_login_form() -> None:
                     "user_email": response.user.email,
                 }
                 st.rerun()
-            except Exception:
-                st.error("Email ou mot de passe incorrect.")
+            except AuthApiError as e:
+                st.error(f"Authentification refusée : {e.message}")
+            except Exception as e:
+                st.error(f"Erreur de connexion : {e}")
 
 
 def _show_logout_button() -> None:

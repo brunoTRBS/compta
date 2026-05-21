@@ -13,7 +13,9 @@
 -- 1. Rôle lecture seule pour connectorx
 -- ---------------------------------------------------------------------------
 
-CREATE ROLE app_reader WITH LOGIN PASSWORD 'lMzKm86RUfJwCLRZ';
+-- NE PAS VERSIONNER le vrai mot de passe ici.
+-- Exécuter la rotation directement : supabase db query --linked "ALTER ROLE app_reader WITH PASSWORD '<votre_mot_de_passe>';"
+CREATE ROLE app_reader WITH LOGIN PASSWORD '<APP_READER_PASSWORD>';
 GRANT CONNECT ON DATABASE postgres TO app_reader;
 GRANT USAGE ON SCHEMA public TO app_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_reader;

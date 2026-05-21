@@ -11,6 +11,9 @@ CLAUDE.md
 # Supabase CLI
 supabase/.temp/
 
+# Migrations manuelles (infra/) — templates uniquement, jamais de credentials réels.
+# Les vraies migrations versionnées sont dans supabase/migrations/ (gérées par le CLI).
+
 # Python
 __pycache__/
 *.py[cod]
