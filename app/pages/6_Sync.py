@@ -1,4 +1,4 @@
-"""Page Synchronisation — import GoCardless (banque) et Stripe."""
+"""Page Synchronisation — import relevé CSV BoursoBank et Stripe."""
 
 import time
 from datetime import date, timedelta
@@ -6,19 +6,24 @@ from datetime import date, timedelta
 import streamlit as st
 
 from src.config import BusinessId
+from src.logic.statement_parser import map_statement_transaction, parse_boursobank_csv
 from src.logic.import_pipeline import run_full_pipeline
 from src.services.db_reader import invalidate_cache, read_transactions
-from src.services.gocardless import fetch_transactions, list_accounts, map_transaction
 from src.services.stripe_client import fetch_payment_intents, map_payment_intent
 from app.components.auth import require_auth
 
 st.set_page_config(page_title="Synchronisation", page_icon="🔄", layout="wide")
 require_auth()
 st.title("Synchronisation des données")
-st.caption("Importe les transactions bancaires (GoCardless) et les paiements (Stripe).")
+st.caption("Importe les transactions bancaires (relevé CSV BoursoBank) et les paiements (Stripe).")
 
-_BUSINESS_OPTIONS = {
-    "Perso": str(BusinessId.PERSONAL),
+_BUSINESS_LABELS: dict[str, str] = {
+    str(BusinessId.PERSONAL): "Perso",
+    str(BusinessId.PHI_RISING): "Phi Rising",
+    str(BusinessId.BOOTH_IN_LYON): "Booth in Lyon",
+}
+
+_STRIPE_BUSINESS_MAP = {
     "Phi Rising": str(BusinessId.PHI_RISING),
     "Booth in Lyon": str(BusinessId.BOOTH_IN_LYON),
 }
@@ -52,76 +57,64 @@ def _render_report(report) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Filtres de période (communs aux deux sources)
+# Section BoursoBank — import par relevé CSV
 # ---------------------------------------------------------------------------
-st.subheader("Période d'import")
-col_df, col_dt = st.columns(2)
-date_from = col_df.date_input("Date début", value=date.today() - timedelta(days=30), key="sync_from")
-date_to = col_dt.date_input("Date fin", value=date.today(), key="sync_to")
+st.subheader("🏦 Banque — Relevé CSV BoursoBank")
 
-if date_from > date_to:
-    st.error("La date de début doit être antérieure à la date de fin.")
-    st.stop()
+col_biz, col_upload = st.columns([1, 2])
 
-st.divider()
+with col_biz:
+    bank_business_id = st.selectbox(
+        "Compte / Activité",
+        options=list(_BUSINESS_LABELS.keys()),
+        format_func=_BUSINESS_LABELS.get,
+        key="bank_biz",
+    )
 
-# ---------------------------------------------------------------------------
-# Section GoCardless
-# ---------------------------------------------------------------------------
-st.subheader("🏦 Banque — GoCardless")
+with col_upload:
+    uploaded_file = st.file_uploader(
+        "Relevé CSV BoursoBank",
+        type=["csv"],
+        key="bank_csv",
+    )
 
-with st.expander("Configuration GoCardless", expanded=True):
-    gc_left, gc_right = st.columns([3, 1])
-    with gc_left:
-        requisition_id = st.text_input(
-            "Requisition ID",
-            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-            help="Créez votre réquisition sur bankaccountdata.gocardless.com",
-            key="gc_req_id",
-        )
-        gc_business_label = st.selectbox(
-            "Activité", list(_BUSINESS_OPTIONS.keys()), key="gc_biz"
-        )
-    with gc_right:
-        st.write("")
-        st.write("")
-        st.write("")
-        sync_bank = st.button(
-            "Synchroniser", key="btn_bank", type="primary", width='stretch'
-        )
+import_btn = st.button(
+    "Importer",
+    key="btn_import_csv",
+    type="primary",
+    disabled=uploaded_file is None,
+)
 
-if sync_bank:
-    if not requisition_id.strip():
-        st.error("Saisissez un Requisition ID GoCardless.")
-    else:
-        gc_business_id = _BUSINESS_OPTIONS[gc_business_label]
-        with st.status("Synchronisation bancaire…", expanded=True) as status:
-            try:
-                st.write("Récupération des comptes liés à la réquisition…")
-                account_ids = list_accounts(requisition_id.strip())
-                st.write(f"→ {len(account_ids)} compte(s) trouvé(s).")
+if import_btn and uploaded_file is not None:
+    with st.status("Import du relevé BoursoBank…", expanded=True) as status:
+        try:
+            st.write("Lecture du fichier CSV…")
+            raw_rows = parse_boursobank_csv(uploaded_file.read())
 
-                raw_all: list[dict] = []
-                for acc_id in account_ids:
-                    st.write(f"Chargement des transactions — compte {acc_id[:8]}…")
-                    raw = fetch_transactions(
-                        acc_id,
-                        date_from=date_from.isoformat(),
-                        date_to=date_to.isoformat(),
-                    )
-                    raw_all.extend(map_transaction(tx, gc_business_id) for tx in raw)
-
-                st.write(f"→ {len(raw_all)} transaction(s) récupérée(s). Déduplication…")
-                existing = _get_existing_ids(gc_business_id)
-                report = run_full_pipeline(raw_all, existing, source="bank")
+            if not raw_rows:
+                status.update(label="Aucune transaction détectée.", state="complete")
+                st.warning(
+                    "Le fichier ne contient aucune transaction lisible. "
+                    "Vérifiez que l'export est au format CSV BoursoBank standard."
+                )
+            else:
+                st.write(f"→ {len(raw_rows)} ligne(s) lue(s). Déduplication…")
+                mapped = [map_statement_transaction(r, bank_business_id) for r in raw_rows]
+                existing = _get_existing_ids(bank_business_id)
+                report = run_full_pipeline(mapped, existing, source="bank")
                 invalidate_cache()
 
-                status.update(label="Synchronisation bancaire terminée ✅", state="complete")
+                status.update(label="Import terminé ✅", state="complete")
                 _render_report(report)
 
-            except Exception as exc:
-                status.update(label="Erreur lors de la synchronisation", state="error")
-                st.error(str(exc))
+        except Exception as exc:
+            status.update(label="Erreur lors de l'import", state="error")
+            st.error(str(exc))
+
+st.caption(
+    "Exportez le relevé depuis BoursoBank : Espace client → Mes comptes → "
+    "Télécharger le relevé → Format CSV."
+)
 
 st.divider()
 
@@ -135,8 +128,13 @@ with st.expander("Configuration Stripe", expanded=True):
     with stripe_left:
         stripe_business_label = st.selectbox(
             "Activité Stripe",
-            ["Phi Rising", "Booth in Lyon"],
+            list(_STRIPE_BUSINESS_MAP.keys()),
             key="stripe_biz",
+        )
+        stripe_date_from = st.date_input(
+            "Depuis le",
+            value=date.today() - timedelta(days=30),
+            key="stripe_from",
         )
     with stripe_right:
         st.write("")
@@ -147,10 +145,10 @@ with st.expander("Configuration Stripe", expanded=True):
         )
 
 if sync_stripe:
-    stripe_business_id = _BUSINESS_OPTIONS[stripe_business_label]
+    stripe_business_id = _STRIPE_BUSINESS_MAP[stripe_business_label]
     with st.status("Synchronisation Stripe…", expanded=True) as status:
         try:
-            since_ts = int(time.mktime(date_from.timetuple()))
+            since_ts = int(time.mktime(stripe_date_from.timetuple()))
 
             st.write(f"Récupération des PaymentIntents ({stripe_business_label})…")
             pis = fetch_payment_intents(stripe_business_id, created_after=since_ts)
@@ -170,9 +168,6 @@ if sync_stripe:
 
 st.divider()
 
-# ---------------------------------------------------------------------------
-# Historique (dernières synchros)
-# ---------------------------------------------------------------------------
 st.caption(
     "Les transactions importées apparaissent immédiatement sur les pages "
     "Phi Rising, Booth in Lyon et Budget Perso après synchronisation."
