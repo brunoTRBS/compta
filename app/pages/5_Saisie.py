@@ -37,6 +37,15 @@ _cats_by_biz: dict[str, list[str]] = {
     )
     for biz_id in [str(BusinessId.PHI_RISING), str(BusinessId.BOOTH_IN_LYON), str(BusinessId.PERSONAL)]
 }
+_cats_by_biz_dir: dict[tuple[str, str], list[str]] = {
+    (biz_id, direction): sorted(
+        _all_cats_df.filter(
+            (pl.col("business_id") == biz_id) & (pl.col("direction") == direction)
+        )["name"].to_list()
+    )
+    for biz_id in [str(BusinessId.PHI_RISING), str(BusinessId.BOOTH_IN_LYON), str(BusinessId.PERSONAL)]
+    for direction in ["income", "expense"]
+} if not _all_cats_df.is_empty() else {}
 
 tab_new, tab_pending, tab_edit = st.tabs(
     ["➕ Nouvelle transaction", "⏳ En attente de catégorisation", "✏️ Corriger des transactions"]
@@ -49,23 +58,31 @@ with tab_new:
     st.subheader("Ajouter une transaction manuelle")
     st.caption("Idéal pour les paiements en espèces ou les opérations non importées.")
 
+    # Hors formulaire : réagit immédiatement pour filtrer les catégories
+    col_biz, col_type = st.columns(2)
+    tx_business_label = col_biz.selectbox("Activité", list(_BUSINESS_LABELS.keys()), key="new_tx_biz")
+    tx_type = col_type.radio("Type", ["Dépense", "Revenu"], horizontal=True, key="new_tx_type")
+
+    tx_biz_id = _BUSINESS_LABELS[tx_business_label]
+    tx_direction = "expense" if tx_type == "Dépense" else "income"
+    filtered_cats = _cats_by_biz_dir.get((tx_biz_id, tx_direction), [])
+
     with st.form("form_new_transaction", clear_on_submit=True):
         col_date, col_amount = st.columns(2)
         tx_date = col_date.date_input("Date", value=date.today())
         tx_amount = col_amount.number_input(
             "Montant (€)",
+            min_value=0.0,
             step=0.01,
             format="%.2f",
-            help="Négatif pour une dépense, positif pour un revenu.",
+            help="Saisissez toujours un montant positif.",
         )
 
         tx_label = st.text_input("Libellé", max_chars=200, placeholder="Ex : Courses marché")
 
-        col_biz, col_cat = st.columns(2)
-        tx_business_label = col_biz.selectbox("Activité", list(_BUSINESS_LABELS.keys()))
-        tx_category = col_cat.selectbox(
+        tx_category = st.selectbox(
             "Catégorie",
-            ["— Laisser vide —"] + _all_category_names,
+            ["— Laisser vide —"] + filtered_cats,
         )
         tx_notes = st.text_area("Notes (optionnel)", height=68, max_chars=500)
 
@@ -75,12 +92,13 @@ with tab_new:
         if not tx_label.strip():
             st.error("Le libellé est obligatoire.")
         else:
+            signed_amount = float(tx_amount) if tx_direction == "income" else -float(tx_amount)
             payload: dict = {
                 "date": tx_date.isoformat(),
-                "amount": float(tx_amount),
+                "amount": signed_amount,
                 "label": tx_label.strip(),
                 "source": str(TransactionSource.MANUAL),
-                "business_id": _BUSINESS_LABELS[tx_business_label],
+                "business_id": tx_biz_id,
                 "category": tx_category if tx_category != "— Laisser vide —" else None,
                 "notes": tx_notes.strip() or None,
             }
