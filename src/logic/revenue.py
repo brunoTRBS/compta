@@ -66,14 +66,24 @@ def compute_ytd_summary(
     ca = float(yearly.filter(pl.col("amount") > 0)["amount"].sum() or 0.0)
     expenses = abs(float(yearly.filter(pl.col("amount") < 0)["amount"].sum() or 0.0))
 
+    # Frais Stripe déductibles du CA déclaré avant calcul URSSAF.
+    # Identifiés par category == "Stripe" et amount < 0.
+    stripe_fees_series = yearly.filter(
+        (pl.col("amount") < 0) & (pl.col("category") == "Stripe")
+    )["amount"]
+    stripe_fees = abs(float(stripe_fees_series.sum() or 0.0))
+    ca_for_urssaf = max(0.0, ca - stripe_fees)
+
     urssaf = compute_cotisations(
-        Decimal(str(round(ca, 2))),
+        Decimal(str(round(ca_for_urssaf, 2))),
         business_id,
         with_versement_liberatoire=with_versement_liberatoire,
     )
 
     return {
         "ca": ca,
+        "stripe_fees": stripe_fees,
+        "ca_for_urssaf": ca_for_urssaf,
         "expenses": expenses,
         "cotisations": float(urssaf.cotisations),
         "versement_liberatoire": float(urssaf.versement_liberatoire),

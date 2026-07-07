@@ -48,7 +48,8 @@ class TestComputeYtdSummary:
     def test_expected_keys(self, phi_rising_transactions):
         summary = compute_ytd_summary(phi_rising_transactions, BusinessId.PHI_RISING, year=2024)
         expected_keys = {
-            "ca", "expenses", "cotisations", "versement_liberatoire",
+            "ca", "stripe_fees", "ca_for_urssaf", "expenses",
+            "cotisations", "versement_liberatoire",
             "total_charges", "net_margin", "ca_threshold", "is_above_threshold",
         }
         assert set(summary.keys()) == expected_keys
@@ -60,6 +61,32 @@ class TestComputeYtdSummary:
     def test_expenses_value(self, phi_rising_transactions):
         summary = compute_ytd_summary(phi_rising_transactions, BusinessId.PHI_RISING, year=2024)
         assert summary["expenses"] == pytest.approx(200.0)
+
+    def test_no_stripe_fees_when_absent(self, phi_rising_transactions):
+        summary = compute_ytd_summary(phi_rising_transactions, BusinessId.PHI_RISING, year=2024)
+        assert summary["stripe_fees"] == pytest.approx(0.0)
+        assert summary["ca_for_urssaf"] == pytest.approx(1500.0)
+
+    def test_stripe_fees_deducted_from_ca_for_urssaf(self):
+        from datetime import date
+        df = pl.DataFrame({
+            "id": ["r1", "r2", "s1"],
+            "date": pl.Series([date(2024, 1, 10), date(2024, 1, 20), date(2024, 1, 31)], dtype=pl.Date),
+            "amount": pl.Series([1000.0, 500.0, -25.0], dtype=pl.Float64),
+            "label": ["Coaching A", "Coaching B", "frais stripe"],
+            "source": ["manual", "manual", "manual"],
+            "business_id": ["phi_rising", "phi_rising", "phi_rising"],
+            "category": ["BNC", "BNC", "Stripe"],
+            "is_income": [True, True, False],
+        })
+        summary = compute_ytd_summary(df, BusinessId.PHI_RISING, year=2024)
+        assert summary["ca"] == pytest.approx(1500.0)
+        assert summary["stripe_fees"] == pytest.approx(25.0)
+        assert summary["ca_for_urssaf"] == pytest.approx(1475.0)
+        from decimal import Decimal
+        from src.config import URSSAF_RATES
+        expected_cotisations = float((Decimal("1475.0") * URSSAF_RATES[BusinessId.PHI_RISING]).quantize(Decimal("0.01")))
+        assert summary["cotisations"] == pytest.approx(expected_cotisations)
 
     def test_not_above_threshold(self, phi_rising_transactions):
         summary = compute_ytd_summary(phi_rising_transactions, BusinessId.PHI_RISING, year=2024)

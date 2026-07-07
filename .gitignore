@@ -14,6 +14,10 @@ supabase/.temp/
 # Migrations manuelles (infra/) — templates uniquement, jamais de credentials réels.
 # Les vraies migrations versionnées sont dans supabase/migrations/ (gérées par le CLI).
 
+# Imports manuels (données financières personnelles)
+data/imports/*.csv
+scripts/*
+
 # Python
 __pycache__/
 *.py[cod]
