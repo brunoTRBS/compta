@@ -1,21 +1,37 @@
-"""Lecture haute performance de la base via connectorx → Polars.
+"""Lecture des données depuis Supabase via REST API → Polars.
 
-Utiliser ce module pour toutes les requêtes analytiques (agrégations, jointures,
-filtres complexes). Les données sont mises en cache par Streamlit.
+Remplace l'ancienne approche ADBC/connectorx (connexion TCP directe bloquée sur
+Streamlit Cloud). Utilise la REST API HTTPS de Supabase, puis convertit en Polars.
 
 Les ÉCRITURES restent dans supabase.py.
 """
 
+from calendar import monthrange
 from datetime import date as Date
 from typing import Literal
 
 import polars as pl
 import streamlit as st
 
-from src.services.supabase import get_db_url
+from src.services.supabase import get_supabase
 
-# TTL du cache Streamlit pour les requêtes (5 minutes)
 _CACHE_TTL = 300
+
+_TXN_COLS = "id,date,amount,label,source,business_id,category,is_income,external_id,created_at"
+_TXN_LIMIT = 50_000
+
+_TXN_SCHEMA: dict[str, type[pl.DataType]] = {
+    "id": pl.Utf8,
+    "date": pl.Date,
+    "amount": pl.Float64,
+    "label": pl.Utf8,
+    "source": pl.Utf8,
+    "business_id": pl.Utf8,
+    "category": pl.Utf8,
+    "is_income": pl.Boolean,
+    "external_id": pl.Utf8,
+    "created_at": pl.Datetime("us", "UTC"),
+}
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -26,88 +42,94 @@ def read_transactions(
     date_from: Date | None = None,
     date_to: Date | None = None,
 ) -> pl.DataFrame:
-    """Lit les transactions depuis PostgreSQL via connectorx.
+    """Lit les transactions via Supabase REST. Retourne un DataFrame Polars typé."""
+    q = get_supabase().table("transactions").select(_TXN_COLS)
 
-    Retourne un DataFrame Polars typé. Les filtres sont appliqués au niveau SQL.
-    date_from/date_to prennent priorité sur year/month quand fournis.
-    """
-    conditions: list[str] = []
     if business_id is not None:
-        conditions.append(f"business_id = '{business_id}'")
-    if date_from is not None:
-        conditions.append(f"date >= '{date_from.isoformat()}'")
-    if date_to is not None:
-        conditions.append(f"date <= '{date_to.isoformat()}'")
-    if date_from is None and date_to is None:
-        if year is not None:
-            conditions.append(f"EXTRACT(YEAR FROM date) = {year}")
-        if month is not None:
-            conditions.append(f"EXTRACT(MONTH FROM date) = {month}")
+        q = q.eq("business_id", business_id)
 
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    query = f"""
-        SELECT
-            id,
-            date,
-            amount::float8      AS amount,
-            label,
-            source,
-            business_id,
-            category,
-            is_income,
-            external_id,
-            created_at
-        FROM transactions
-        {where}
-        ORDER BY date DESC
-    """
-    df = pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
-    return _cast_transactions(df)
+    if date_from is not None:
+        q = q.gte("date", date_from.isoformat())
+    if date_to is not None:
+        q = q.lte("date", date_to.isoformat())
+
+    if date_from is None and date_to is None:
+        if year is not None and month is not None:
+            last_day = monthrange(year, month)[1]
+            q = q.gte("date", f"{year}-{month:02d}-01").lte("date", f"{year}-{month:02d}-{last_day:02d}")
+        elif year is not None:
+            q = q.gte("date", f"{year}-01-01").lte("date", f"{year}-12-31")
+
+    data = q.order("date", desc=True).limit(_TXN_LIMIT).execute().data
+    if not data:
+        return pl.DataFrame(schema=_TXN_SCHEMA)
+    return _cast_transactions(pl.DataFrame(data))
 
 
 @st.cache_data(ttl=_CACHE_TTL)
 def read_accounts(owner: str | None = None) -> pl.DataFrame:
     """Lit les comptes bancaires et d'épargne."""
-    where = f"WHERE owner = '{owner}' AND is_active = true" if owner else "WHERE is_active = true"
-    query = f"""
-        SELECT id, name, institution, type, owner, currency, balance, last_synced_at
-        FROM accounts
-        {where}
-        ORDER BY owner, name
-    """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
+    q = (
+        get_supabase()
+        .table("accounts")
+        .select("id,name,institution,type,owner,currency,balance,last_synced_at")
+        .eq("is_active", True)
+    )
+    if owner is not None:
+        q = q.eq("owner", owner)
+    data = q.order("name").execute().data
+    if not data:
+        return pl.DataFrame()
+    return pl.DataFrame(data)
 
 
 @st.cache_data(ttl=_CACHE_TTL)
 def read_account_balance_history(account_id: str) -> pl.DataFrame:
     """Lit l'historique des soldes d'un compte pour les courbes d'évolution."""
-    query = f"""
-        SELECT date, balance::float8 AS balance
-        FROM account_balance_history
-        WHERE account_id = '{account_id}'
-        ORDER BY date
-    """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
+    data = (
+        get_supabase()
+        .table("account_balance_history")
+        .select("date,balance")
+        .eq("account_id", account_id)
+        .order("date")
+        .execute()
+        .data
+    )
+    if not data:
+        return pl.DataFrame(schema={"date": pl.Date, "balance": pl.Float64})
+    return pl.DataFrame(data).with_columns(
+        pl.col("date").cast(pl.Date),
+        pl.col("balance").cast(pl.Float64),
+    )
 
 
 @st.cache_data(ttl=_CACHE_TTL)
-def read_monthly_revenue(
-    business_id: str,
-    year: int,
-) -> pl.DataFrame:
+def read_monthly_revenue(business_id: str, year: int) -> pl.DataFrame:
     """Retourne le CA mensuel agrégé pour une activité et une année."""
-    query = f"""
-        SELECT
-            EXTRACT(MONTH FROM date)::int AS month,
-            SUM(amount)::float8           AS revenue
-        FROM transactions
-        WHERE business_id = '{business_id}'
-          AND EXTRACT(YEAR FROM date) = {year}
-          AND amount > 0
-        GROUP BY month
-        ORDER BY month
-    """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
+    data = (
+        get_supabase()
+        .table("transactions")
+        .select("date,amount")
+        .eq("business_id", business_id)
+        .gte("date", f"{year}-01-01")
+        .lte("date", f"{year}-12-31")
+        .gt("amount", 0)
+        .execute()
+        .data
+    )
+    if not data:
+        return pl.DataFrame(schema={"month": pl.Int32, "revenue": pl.Float64})
+    return (
+        pl.DataFrame(data)
+        .with_columns(
+            pl.col("date").cast(pl.Date),
+            pl.col("amount").cast(pl.Float64),
+        )
+        .with_columns(pl.col("date").dt.month().alias("month"))
+        .group_by("month")
+        .agg(pl.col("amount").sum().alias("revenue"))
+        .sort("month")
+    )
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -118,29 +140,38 @@ def read_category_breakdown(
     direction: Literal["income", "expense", "all"] = "all",
 ) -> pl.DataFrame:
     """Retourne la répartition des montants par catégorie."""
-    conditions = [
-        f"business_id = '{business_id}'",
-        f"EXTRACT(YEAR FROM date) = {year}",
-    ]
+    q = (
+        get_supabase()
+        .table("transactions")
+        .select("category,amount")
+        .eq("business_id", business_id)
+    )
     if month is not None:
-        conditions.append(f"EXTRACT(MONTH FROM date) = {month}")
+        last_day = monthrange(year, month)[1]
+        q = q.gte("date", f"{year}-{month:02d}-01").lte("date", f"{year}-{month:02d}-{last_day:02d}")
+    else:
+        q = q.gte("date", f"{year}-01-01").lte("date", f"{year}-12-31")
     if direction == "income":
-        conditions.append("amount > 0")
+        q = q.gt("amount", 0)
     elif direction == "expense":
-        conditions.append("amount < 0")
+        q = q.lt("amount", 0)
 
-    where = "WHERE " + " AND ".join(conditions)
-    query = f"""
-        SELECT
-            COALESCE(category, 'non classé') AS category,
-            SUM(amount)::float8              AS total,
-            COUNT(*)::int                    AS count
-        FROM transactions
-        {where}
-        GROUP BY category
-        ORDER BY ABS(SUM(amount)) DESC
-    """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
+    data = q.execute().data
+    if not data:
+        return pl.DataFrame(schema={"category": pl.Utf8, "total": pl.Float64, "count": pl.Int32})
+    return (
+        pl.DataFrame(data)
+        .with_columns(
+            pl.col("category").fill_null("non classé"),
+            pl.col("amount").cast(pl.Float64),
+        )
+        .group_by("category")
+        .agg(
+            pl.col("amount").sum().alias("total"),
+            pl.len().alias("count"),
+        )
+        .sort(pl.col("total").abs(), descending=True)
+    )
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -148,40 +179,52 @@ def read_patrimoine_evolution(
     owner: str | None = None,
     year: int | None = None,
 ) -> pl.DataFrame:
-    """Lit l'évolution du patrimoine agrégé depuis account_balance_history.
-
-    Joint avec accounts pour filtrer par owner.
-    Retourne : date (Date), total_balance (Float64).
-    """
-    conditions: list[str] = []
+    """Lit l'évolution du patrimoine agrégé depuis account_balance_history."""
+    # Résoudre d'abord les account_ids pour l'owner donné
+    acc_q = get_supabase().table("accounts").select("id").eq("is_active", True)
     if owner is not None:
-        conditions.append(f"a.owner = '{owner}'")
-    if year is not None:
-        conditions.append(f"EXTRACT(YEAR FROM h.date) = {year}")
+        acc_q = acc_q.eq("owner", owner)
+    acc_data = acc_q.execute().data
+    if not acc_data:
+        return pl.DataFrame(schema={"date": pl.Date, "total_balance": pl.Float64})
 
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    query = f"""
-        SELECT h.date, SUM(h.balance)::float8 AS total_balance
-        FROM account_balance_history h
-        JOIN accounts a ON h.account_id = a.id
-        {where}
-        GROUP BY h.date
-        ORDER BY h.date
-    """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
+    account_ids = [a["id"] for a in acc_data]
+
+    hist_q = (
+        get_supabase()
+        .table("account_balance_history")
+        .select("date,balance")
+        .in_("account_id", account_ids)
+    )
+    if year is not None:
+        hist_q = hist_q.gte("date", f"{year}-01-01").lte("date", f"{year}-12-31")
+
+    hist_data = hist_q.execute().data
+    if not hist_data:
+        return pl.DataFrame(schema={"date": pl.Date, "total_balance": pl.Float64})
+
+    return (
+        pl.DataFrame(hist_data)
+        .with_columns(
+            pl.col("date").cast(pl.Date),
+            pl.col("balance").cast(pl.Float64),
+        )
+        .group_by("date")
+        .agg(pl.col("balance").sum().alias("total_balance"))
+        .sort("date")
+    )
 
 
 @st.cache_data(ttl=_CACHE_TTL)
 def read_categories(business_id: str | None = None) -> pl.DataFrame:
-    """Lit les catégories depuis PostgreSQL (résultat mis en cache 5 min)."""
-    where = f"WHERE business_id = '{business_id}'" if business_id else ""
-    query = f"""
-        SELECT id, business_id, name, direction
-        FROM categories
-        {where}
-        ORDER BY direction, name
-    """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
+    """Lit les catégories depuis Supabase (résultat mis en cache 5 min)."""
+    q = get_supabase().table("categories").select("id,business_id,name,direction")
+    if business_id is not None:
+        q = q.eq("business_id", business_id)
+    data = q.order("direction").order("name").execute().data
+    if not data:
+        return pl.DataFrame()
+    return pl.DataFrame(data)
 
 
 def invalidate_cache() -> None:
@@ -199,5 +242,5 @@ def _cast_transactions(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("date").cast(pl.Date),
         pl.col("amount").cast(pl.Float64),
         pl.col("is_income").cast(pl.Boolean),
-        pl.col("created_at").cast(pl.Datetime("us", "UTC")),
+        pl.col("created_at").str.to_datetime(time_unit="us", time_zone="UTC"),
     )

@@ -2,7 +2,7 @@
 
 Règle d'usage :
 - Ce module gère les ÉCRITURES et les opérations nécessitant RLS (auth).
-- Pour les lectures lourdes vers Polars, utiliser db_reader.py (connectorx).
+- Pour les lectures analytiques vers Polars, utiliser db_reader.py (REST API).
 """
 
 from typing import Any
