@@ -69,6 +69,16 @@ class TestDeduplicate:
         deduplicate(SAMPLE_TRANSACTIONS, existing_external_ids=existing)
         assert len(SAMPLE_TRANSACTIONS) == original_len
 
+    def test_intra_batch_duplicates_are_filtered(self):
+        """Deux lignes avec le même external_id dans un seul CSV ne doivent pas crasher."""
+        txs = [
+            {"external_id": "same-id", "label": "A", "amount": -10.0},
+            {"external_id": "same-id", "label": "A", "amount": -10.0},
+        ]
+        new, dupes = deduplicate(txs, existing_external_ids=set())
+        assert len(new) == 1
+        assert dupes == 1
+
 
 # ---------------------------------------------------------------------------
 # Tests : categorize

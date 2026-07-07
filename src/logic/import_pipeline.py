@@ -30,19 +30,22 @@ def deduplicate(
     raw_transactions: list[dict[str, Any]],
     existing_external_ids: set[str],
 ) -> tuple[list[dict[str, Any]], int]:
-    """Filtre les transactions déjà présentes en base (par external_id).
+    """Filtre les transactions déjà présentes en base ET les doublons intra-batch.
 
     Returns:
         (nouvelles_transactions, nb_doublons_ignorés)
     """
     new: list[dict[str, Any]] = []
     duplicates = 0
+    seen_in_batch: set[str] = set()
     for tx in raw_transactions:
         ext_id = tx.get("external_id")
-        if ext_id and ext_id in existing_external_ids:
+        if ext_id and (ext_id in existing_external_ids or ext_id in seen_in_batch):
             duplicates += 1
         else:
             new.append(tx)
+            if ext_id:
+                seen_in_batch.add(ext_id)
     return new, duplicates
 
 
