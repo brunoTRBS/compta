@@ -61,7 +61,7 @@ def read_transactions(
         {where}
         ORDER BY date DESC
     """
-    df = pl.read_database_uri(query=query, uri=get_db_url(), engine="connectorx")
+    df = pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
     return _cast_transactions(df)
 
 
@@ -75,7 +75,7 @@ def read_accounts(owner: str | None = None) -> pl.DataFrame:
         {where}
         ORDER BY owner, name
     """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="connectorx")
+    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -87,7 +87,7 @@ def read_account_balance_history(account_id: str) -> pl.DataFrame:
         WHERE account_id = '{account_id}'
         ORDER BY date
     """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="connectorx")
+    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -107,7 +107,7 @@ def read_monthly_revenue(
         GROUP BY month
         ORDER BY month
     """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="connectorx")
+    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -140,7 +140,7 @@ def read_category_breakdown(
         GROUP BY category
         ORDER BY ABS(SUM(amount)) DESC
     """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="connectorx")
+    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -168,7 +168,7 @@ def read_patrimoine_evolution(
         GROUP BY h.date
         ORDER BY h.date
     """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="connectorx")
+    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -181,7 +181,7 @@ def read_categories(business_id: str | None = None) -> pl.DataFrame:
         {where}
         ORDER BY direction, name
     """
-    return pl.read_database_uri(query=query, uri=get_db_url(), engine="connectorx")
+    return pl.read_database_uri(query=query, uri=get_db_url(), engine="adbc")
 
 
 def invalidate_cache() -> None:
