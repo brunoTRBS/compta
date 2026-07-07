@@ -115,9 +115,10 @@ with col_chart:
 
 with col_table:
     st.subheader("Dépenses du mois")
+    available_expense_cols = [c for c in ["date", "label", "amount", "category", "note"] if c in df.columns]
     expenses_df = (
         df.filter(pl.col("amount") < 0)
-        .select(["date", "label", "amount", "category"])
+        .select(available_expense_cols)
         .sort("date", descending=True)
     )
     if not expenses_df.is_empty():
@@ -130,6 +131,7 @@ with col_table:
                 "label": st.column_config.TextColumn("Libellé"),
                 "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €"),
                 "category": st.column_config.TextColumn("Catégorie"),
+                "note": st.column_config.TextColumn("Note"),
             },
         )
     else:

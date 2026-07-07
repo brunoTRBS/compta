@@ -23,7 +23,7 @@ def render_transaction_table(
     Returns:
         DataFrame avec les modifications appliquées par l'utilisateur.
     """
-    display_cols = ["id", "date", "label", "amount", "source", "category"]
+    display_cols = ["id", "date", "label", "amount", "source", "category", "note"]
     available_cols = [c for c in display_cols if c in df.columns]
     display_df = df.select(available_cols)
 
@@ -45,6 +45,7 @@ def render_transaction_table(
                 required=False,
                 width="medium",
             ),
+            "note": st.column_config.TextColumn("Note", width="medium"),
         },
     )
 
