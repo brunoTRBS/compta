@@ -50,3 +50,4 @@ VERSEMENT_LIBERATOIRE_RATES: dict[BusinessId, Decimal] = {
     BusinessId.BOOTH_IN_LYON: Decimal("0.017"),  # 1.7 % BIC services
 }
 
+
