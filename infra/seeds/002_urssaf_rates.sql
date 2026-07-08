@@ -22,29 +22,28 @@ CREATE POLICY "allow_all_authenticated" ON urssaf_rates
 
 -- ---------------------------------------------------------------------------
 -- Données 2024
--- Phi Rising   : BNC professions libérales (hors CIPAV) → 21.2 %
--- Booth in Lyon: BIC prestations de services            → 21.2 %
---
--- ATTENTION : vérifier si Booth in Lyon est classé BIC commerce (12.3 %)
--- selon le code APE déclaré auprès de l'URSSAF.
+-- Phi Rising   : BNC 28 %, BIC 27 %, ND 0 % (frais Stripe déduits du BNC)
+-- Booth in Lyon: Évenement Privé 23 %, ND 0 %
+-- cotisations_rate reflète le taux principal (BNC pour Phi Rising).
+-- Les taux par catégorie sont gérés dans src/config.py (URSSAF_RATES_BY_CATEGORY).
 -- ---------------------------------------------------------------------------
 INSERT INTO urssaf_rates
     (business_id, year, cotisations_rate, ca_threshold, tva_franchise_threshold, versement_liberatoire_rate)
 VALUES
-    ('phi_rising',    2024, 0.2120, 77700.00, 36800.00, 0.0220),
-    ('booth_in_lyon', 2024, 0.2120, 77700.00, 36800.00, 0.0170)
+    ('phi_rising',    2024, 0.2800, 77700.00, 36800.00, 0.0220),
+    ('booth_in_lyon', 2024, 0.2300, 77700.00, 36800.00, 0.0170)
 ON CONFLICT (business_id, year) DO UPDATE
     SET cotisations_rate           = EXCLUDED.cotisations_rate,
         ca_threshold               = EXCLUDED.ca_threshold,
         tva_franchise_threshold    = EXCLUDED.tva_franchise_threshold,
         versement_liberatoire_rate = EXCLUDED.versement_liberatoire_rate;
 
--- Données 2025 (à confirmer après publication officielle)
+-- Données 2025
 INSERT INTO urssaf_rates
     (business_id, year, cotisations_rate, ca_threshold, tva_franchise_threshold, versement_liberatoire_rate)
 VALUES
-    ('phi_rising',    2025, 0.2120, 77700.00, 37500.00, 0.0220),
-    ('booth_in_lyon', 2025, 0.2120, 77700.00, 37500.00, 0.0170)
+    ('phi_rising',    2025, 0.2800, 77700.00, 37500.00, 0.0220),
+    ('booth_in_lyon', 2025, 0.2300, 77700.00, 37500.00, 0.0170)
 ON CONFLICT (business_id, year) DO UPDATE
     SET cotisations_rate           = EXCLUDED.cotisations_rate,
         ca_threshold               = EXCLUDED.ca_threshold,

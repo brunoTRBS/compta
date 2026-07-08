@@ -1,12 +1,17 @@
 """Agrégations de revenus et calcul de la marge nette via Polars."""
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
 import polars as pl
 
-from src.config import BusinessId, URSSAF_RATES
-from src.logic.urssaf import compute_cotisations
+from src.config import (
+    BusinessId,
+    CA_THRESHOLDS,
+    URSSAF_RATES,
+    URSSAF_RATES_BY_CATEGORY,
+    VERSEMENT_LIBERATOIRE_RATES,
+)
 
 _MONTH_LABELS: dict[int, str] = {
     1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Jun",
@@ -16,6 +21,57 @@ _MONTH_LABELS: dict[int, str] = {
 
 def _month_label(month_num: int, year: int) -> str:
     return f"{_MONTH_LABELS[month_num]} {str(year)[2:]}"
+
+
+def _compute_cotisations_by_category(
+    df: pl.DataFrame,
+    business_id: BusinessId,
+    stripe_fees: float = 0.0,
+) -> float:
+    """Calcule les cotisations URSSAF en appliquant le taux propre à chaque catégorie.
+
+    Pour PHI_RISING, les frais Stripe sont déduits du CA BNC avant application du taux.
+    Les catégories sans taux explicite utilisent URSSAF_RATES[business_id] comme fallback.
+    """
+    rates = URSSAF_RATES_BY_CATEGORY.get(business_id, {})
+    default_rate = float(URSSAF_RATES[business_id])
+
+    income = df.filter(pl.col("amount") > 0).with_columns(
+        pl.col("category").fill_null("non classé")
+    )
+
+    if income.is_empty():
+        return 0.0
+
+    by_cat = (
+        income
+        .group_by("category")
+        .agg(pl.col("amount").sum().alias("ca"))
+    )
+
+    if rates:
+        rate_df = pl.DataFrame({
+            "category": list(rates.keys()),
+            "rate": [float(r) for r in rates.values()],
+        })
+        by_cat = by_cat.join(rate_df, on="category", how="left")
+    else:
+        by_cat = by_cat.with_columns(pl.lit(None).cast(pl.Float64).alias("rate"))
+
+    by_cat = by_cat.with_columns(pl.col("rate").fill_null(default_rate))
+
+    if business_id == BusinessId.PHI_RISING and stripe_fees > 0:
+        by_cat = by_cat.with_columns(
+            pl.when((pl.col("category") == "BNC") & (pl.col("ca") > stripe_fees))
+            .then(pl.col("ca") - stripe_fees)
+            .when(pl.col("category") == "BNC")
+            .then(pl.lit(0.0))
+            .otherwise(pl.col("ca"))
+            .alias("ca")
+        )
+
+    total = float((by_cat["ca"] * by_cat["rate"]).sum() or 0.0)
+    return round(total, 2)
 
 
 def aggregate_monthly(df: pl.DataFrame, year: int) -> pl.DataFrame:
@@ -66,31 +122,32 @@ def compute_ytd_summary(
     ca = float(yearly.filter(pl.col("amount") > 0)["amount"].sum() or 0.0)
     expenses = abs(float(yearly.filter(pl.col("amount") < 0)["amount"].sum() or 0.0))
 
-    # Frais Stripe déductibles du CA déclaré avant calcul URSSAF.
-    # Identifiés par category == "Stripe" et amount < 0.
     stripe_fees_series = yearly.filter(
         (pl.col("amount") < 0) & (pl.col("category") == "Stripe")
     )["amount"]
     stripe_fees = abs(float(stripe_fees_series.sum() or 0.0))
     ca_for_urssaf = max(0.0, ca - stripe_fees)
 
-    urssaf = compute_cotisations(
-        Decimal(str(round(ca_for_urssaf, 2))),
-        business_id,
-        with_versement_liberatoire=with_versement_liberatoire,
+    cotisations = _compute_cotisations_by_category(yearly, business_id, stripe_fees)
+
+    vl_rate = VERSEMENT_LIBERATOIRE_RATES[business_id] if with_versement_liberatoire else Decimal("0")
+    versement_liberatoire = float(
+        (Decimal(str(round(ca_for_urssaf, 2))) * vl_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     )
+    total_charges = round(cotisations + versement_liberatoire, 2)
+    threshold = float(CA_THRESHOLDS[business_id])
 
     return {
         "ca": ca,
         "stripe_fees": stripe_fees,
         "ca_for_urssaf": ca_for_urssaf,
         "expenses": expenses,
-        "cotisations": float(urssaf.cotisations),
-        "versement_liberatoire": float(urssaf.versement_liberatoire),
-        "total_charges": float(urssaf.total_charges),
-        "net_margin": ca - expenses - float(urssaf.total_charges),
-        "ca_threshold": float(urssaf.ca_threshold),
-        "is_above_threshold": urssaf.is_above_threshold,
+        "cotisations": cotisations,
+        "versement_liberatoire": versement_liberatoire,
+        "total_charges": total_charges,
+        "net_margin": ca - expenses - total_charges,
+        "ca_threshold": threshold,
+        "is_above_threshold": ca > threshold,
     }
 
 
@@ -103,10 +160,8 @@ def aggregate_revenue_by_category(
     df: pl.DataFrame,
     business_id: BusinessId,
 ) -> pl.DataFrame:
-    """Revenus par catégorie : ca_brut, urssaf (proportionnel), ca_net, pct_ca.
+    """Revenus par catégorie : ca_brut, urssaf (taux propre à chaque catégorie), ca_net, pct_ca.
 
-    L'URSSAF est calculée au taux de l'activité appliqué sur le CA brut de chaque
-    catégorie — cohérent avec le calcul global puisque le taux est uniforme.
     Retourne : category, ca_brut, urssaf, ca_net, pct_ca (Float64).
     """
     income = df.filter(pl.col("amount") > 0).with_columns(
@@ -128,12 +183,25 @@ def aggregate_revenue_by_category(
             pl.lit(0.0).alias("pct_ca"),
         )
 
-    rate = float(URSSAF_RATES[business_id])
+    rates = URSSAF_RATES_BY_CATEGORY.get(business_id, {})
+    default_rate = float(URSSAF_RATES[business_id])
+
+    if rates:
+        rate_df = pl.DataFrame({
+            "category": list(rates.keys()),
+            "rate": [float(r) for r in rates.values()],
+        })
+        by_cat = by_cat.join(rate_df, on="category", how="left")
+    else:
+        by_cat = by_cat.with_columns(pl.lit(None).cast(pl.Float64).alias("rate"))
+
+    by_cat = by_cat.with_columns(pl.col("rate").fill_null(default_rate))
+
     return by_cat.with_columns(
-        (pl.col("ca_brut") * rate).round(2).alias("urssaf"),
-        (pl.col("ca_brut") * (1.0 - rate)).round(2).alias("ca_net"),
+        (pl.col("ca_brut") * pl.col("rate")).round(2).alias("urssaf"),
+        (pl.col("ca_brut") * (1.0 - pl.col("rate"))).round(2).alias("ca_net"),
         (pl.col("ca_brut") / total_ca * 100.0).round(1).alias("pct_ca"),
-    )
+    ).drop("rate")
 
 
 def aggregate_expenses_by_category(df: pl.DataFrame) -> pl.DataFrame:

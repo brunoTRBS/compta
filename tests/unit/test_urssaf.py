@@ -66,9 +66,9 @@ class TestComputeCotisations:
         assert isinstance(result, UrssafResult)
 
     def test_rounding_half_up(self):
-        # 10001 * 0.212 = 2120.212 → arrondi à 2120.21
-        result = compute_cotisations(Decimal("10001"), BusinessId.PHI_RISING)
-        assert result.cotisations == Decimal("2120.21")
+        # 100.45 * 0.28 = 28.126 → arrondi à 28.13
+        result = compute_cotisations(Decimal("100.45"), BusinessId.PHI_RISING)
+        assert result.cotisations == Decimal("28.13")
 
     def test_ca_threshold_present_in_result(self):
         threshold = CA_THRESHOLDS[BusinessId.PHI_RISING]

@@ -13,9 +13,13 @@ from supabase import Client, create_client
 
 @st.cache_resource
 def get_supabase() -> Client:
-    """Retourne un client Supabase partagé (singleton par session Streamlit)."""
+    """Retourne un client Supabase partagé (singleton par session Streamlit).
+
+    En DEV_MODE, utilise la service role key pour bypasser les RLS locales.
+    """
     url: str = st.secrets["SUPABASE_URL"]
-    key: str = st.secrets["SUPABASE_KEY"]
+    dev_mode = str(st.secrets.get("DEV_MODE", "false")).lower() == "true"
+    key: str = st.secrets["SUPABASE_SERVICE_KEY"] if dev_mode else st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 
