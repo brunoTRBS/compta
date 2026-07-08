@@ -6,7 +6,7 @@ import streamlit as st
 from datetime import date
 
 from src.config import BusinessId
-from src.logic.budget import breakdown_by_category, compute_budget_summary
+from src.logic.budget import breakdown_by_category, compute_budget_summary, compute_cumulative_balance
 from app.components.auth import require_auth
 from src.services.db_reader import read_transactions
 
@@ -36,7 +36,7 @@ with st.sidebar:
     selected_month = month_labels.index(selected_month_label) + 1
 
 # ---------------------------------------------------------------------------
-# Mois N-1
+# Mois N-1 (pour l'affichage du libellé uniquement)
 # ---------------------------------------------------------------------------
 prev_month = selected_month - 1 if selected_month > 1 else 12
 prev_year = year if selected_month > 1 else year - 1
@@ -50,17 +50,14 @@ try:
         year=year,
         month=selected_month,
     )
-    df_prev = read_transactions(
-        business_id=str(BusinessId.PERSONAL),
-        year=prev_year,
-        month=prev_month,
-    )
+    # Historique complet : nécessaire pour calculer un vrai solde cumulé
+    # (et non juste "mois précédent - mois actuel").
+    df_all_personal = read_transactions(business_id=str(BusinessId.PERSONAL))
 except Exception as exc:
     st.error(f"Impossible de charger les transactions : {exc}")
     st.stop()
 
 summary = compute_budget_summary(df, year, selected_month)
-summary_prev = compute_budget_summary(df_prev, prev_year, prev_month)
 
 def _savings_amount(frame: pl.DataFrame) -> float:
     filtered = frame.filter(
@@ -71,7 +68,7 @@ def _savings_amount(frame: pl.DataFrame) -> float:
 savings = _savings_amount(df)
 expenses_excl_savings = summary["expenses"] - savings
 difference = summary["savings"]
-reste_n1 = summary_prev["savings"]
+reste_n1 = compute_cumulative_balance(df_all_personal, year, selected_month)
 total_fin_mois = reste_n1 + difference
 
 # ---------------------------------------------------------------------------

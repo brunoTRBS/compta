@@ -53,6 +53,27 @@ def compute_savings_rate(income: float, expenses: float) -> float:
     return round((income - expenses) / income * 100, 1)
 
 
+def compute_cumulative_balance(df: pl.DataFrame, year: int, month: int) -> float:
+    """Solde cumulé (revenus - dépenses) de tous les mois strictement avant (year, month).
+
+    Contrairement à un simple "mois précédent", additionne tout l'historique disponible
+    dans df pour ne jamais "oublier" les mois antérieurs au dernier.
+    """
+    if df.is_empty():
+        return 0.0
+
+    before = df.filter(
+        (pl.col("date").dt.year() < year)
+        | ((pl.col("date").dt.year() == year) & (pl.col("date").dt.month() < month))
+    )
+    if before.is_empty():
+        return 0.0
+
+    income = float(before.filter(pl.col("amount") > 0)["amount"].sum() or 0.0)
+    expenses = abs(float(before.filter(pl.col("amount") < 0)["amount"].sum() or 0.0))
+    return income - expenses
+
+
 def compute_budget_summary(
     df: pl.DataFrame,
     year: int,

@@ -2,7 +2,12 @@ import polars as pl
 import pytest
 from datetime import date
 
-from src.logic.budget import breakdown_by_category, compute_budget_summary, compute_savings_rate
+from src.logic.budget import (
+    breakdown_by_category,
+    compute_budget_summary,
+    compute_cumulative_balance,
+    compute_savings_rate,
+)
 
 
 @pytest.fixture
@@ -19,6 +24,18 @@ def personal_transactions():
         "business_id": ["personal"] * 5,
         "is_income": [True, False, False, False, False],
         "source": ["manual", "bank", "bank", "bank", "bank"],
+    })
+
+
+@pytest.fixture
+def three_month_history():
+    """Mai : +200, Juin : +100, Juillet : +50 (revenus - dépenses par mois)."""
+    return pl.DataFrame({
+        "date": pl.Series(
+            [date(2024, 5, 1), date(2024, 5, 2), date(2024, 6, 1), date(2024, 6, 2), date(2024, 7, 1), date(2024, 7, 2)],
+            dtype=pl.Date,
+        ),
+        "amount": pl.Series([1000.0, -800.0, 900.0, -800.0, 850.0, -800.0], dtype=pl.Float64),
     })
 
 
@@ -124,3 +141,26 @@ class TestComputeBudgetSummary:
     def test_top_category_is_string_or_none(self, personal_transactions):
         summary = compute_budget_summary(personal_transactions, year=2024)
         assert summary["top_category"] is None or isinstance(summary["top_category"], str)
+
+
+class TestComputeCumulativeBalance:
+    def test_sums_all_months_before_not_just_the_previous_one(self, three_month_history):
+        # Avant juillet : mai (+200) + juin (+100) = 300, pas seulement juin (+100)
+        result = compute_cumulative_balance(three_month_history, year=2024, month=7)
+        assert result == pytest.approx(300.0)
+
+    def test_before_first_month_is_zero(self, three_month_history):
+        result = compute_cumulative_balance(three_month_history, year=2024, month=5)
+        assert result == pytest.approx(0.0)
+
+    def test_before_second_month_is_first_month_only(self, three_month_history):
+        result = compute_cumulative_balance(three_month_history, year=2024, month=6)
+        assert result == pytest.approx(200.0)
+
+    def test_crosses_year_boundary(self, three_month_history):
+        result = compute_cumulative_balance(three_month_history, year=2025, month=1)
+        assert result == pytest.approx(350.0)  # 200 + 100 + 50
+
+    def test_empty_dataframe_returns_zero(self):
+        empty = pl.DataFrame({"date": [], "amount": []}, schema={"date": pl.Date, "amount": pl.Float64})
+        assert compute_cumulative_balance(empty, year=2024, month=6) == 0.0
