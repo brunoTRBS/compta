@@ -119,3 +119,32 @@ INSERT INTO categories (business_id, name, direction) VALUES
 ('personal',      'Autre Obligatoire',  'expense'),
 ('personal',      'Autre Loisir',       'expense')
 ON CONFLICT (business_id, name, direction) DO NOTHING;
+
+-- Seed 004 : Comptes réels du foyer
+-- Exécuter APRÈS la migration 20260708120000_transaction_accounts.
+INSERT INTO accounts (name, institution, type, owner, currency, balance) VALUES
+    ('Compte pro coaching',   'Hello Bank', 'current', 'phi_rising',    'EUR', 0),
+    ('Compte pro photobooth', 'Revolut',    'revolut', 'booth_in_lyon', 'EUR', 0),
+    ('Compte perso',          'Boursobank', 'current', 'personal',      'EUR', 0),
+    ('Compte commun',         'Hello Bank', 'current', 'personal',      'EUR', 0),
+    ('Livret épargne',        'Boursobank', 'savings', 'personal',      'EUR', 0)
+ON CONFLICT (name, owner) DO NOTHING;
+
+-- Rattachement par défaut des transactions historiques (best-effort).
+UPDATE transactions t
+SET account_id = a.id
+FROM accounts a
+WHERE a.name = 'Compte pro coaching' AND a.owner = 'phi_rising'
+  AND t.business_id = 'phi_rising' AND t.account_id IS NULL;
+
+UPDATE transactions t
+SET account_id = a.id
+FROM accounts a
+WHERE a.name = 'Compte pro photobooth' AND a.owner = 'booth_in_lyon'
+  AND t.business_id = 'booth_in_lyon' AND t.account_id IS NULL;
+
+UPDATE transactions t
+SET account_id = a.id
+FROM accounts a
+WHERE a.name = 'Compte perso' AND a.owner = 'personal'
+  AND t.business_id = 'personal' AND t.account_id IS NULL;
