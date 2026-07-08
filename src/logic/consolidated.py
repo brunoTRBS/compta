@@ -2,6 +2,15 @@
 
 import polars as pl
 
+_PERSONAL_INCOME_SCHEMA = {
+    "date": pl.Date,
+    "label": pl.Utf8,
+    "amount": pl.Float64,
+    "transfer_group_id": pl.Utf8,
+    "year": pl.Int32,
+    "month_num": pl.Int32,
+}
+
 
 def flows_per_account(tx_df: pl.DataFrame, accounts_df: pl.DataFrame) -> pl.DataFrame:
     """Solde courant + flux de la période pour chaque compte réel.
@@ -79,3 +88,61 @@ def pair_transfers(tx_df: pl.DataFrame, accounts_df: pl.DataFrame) -> pl.DataFra
     return paired.select(
         ["transfer_group_id", "date", "label", "from_account", "to_account", "amount"]
     ).sort("date", descending=True)
+
+
+def personal_income_from_transfers(tx_df: pl.DataFrame, accounts_df: pl.DataFrame) -> pl.DataFrame:
+    """Virements à traiter comme un revenu personnel plutôt qu'un simple mouvement interne.
+
+    Concerne les virements dont la destination est un compte Perso et la source est soit
+    Booth in Lyon (l'argent devient alors réellement disponible), soit n'importe quel
+    compte d'épargne (on "désépargne"). Les virements depuis Phi Rising sont exclus : son
+    bénéfice est déjà compté comme revenu perso ailleurs (voir revenue.monthly_benefice),
+    l'ajouter ici ferait doublon. Les mouvements purement internes au perso (compte courant
+    vers compte courant) restent de simples virements, jamais un revenu.
+
+    Args:
+        tx_df: transactions, virements inclus (include_transfers=True).
+        accounts_df: comptes actifs (colonnes id, owner, type).
+
+    Returns:
+        DataFrame : date, label, amount (positif), transfer_group_id, year, month_num.
+        Vide si aucun virement éligible.
+    """
+    if tx_df.is_empty() or accounts_df.is_empty():
+        return pl.DataFrame(schema=_PERSONAL_INCOME_SCHEMA)
+
+    transfers = tx_df.filter(pl.col("is_transfer"))
+    if transfers.is_empty():
+        return pl.DataFrame(schema=_PERSONAL_INCOME_SCHEMA)
+
+    to_legs = (
+        transfers.filter(pl.col("amount") > 0)
+        .join(
+            accounts_df.select(["id", "owner"]).rename({"id": "account_id", "owner": "to_owner"}),
+            on="account_id", how="left",
+        )
+        .filter(pl.col("to_owner") == "personal")
+    )
+    from_legs = (
+        transfers.filter(pl.col("amount") < 0)
+        .join(
+            accounts_df.select(["id", "owner", "type"]).rename(
+                {"id": "account_id", "owner": "from_owner", "type": "from_type"}
+            ),
+            on="account_id", how="left",
+        )
+        .select(["transfer_group_id", "from_owner", "from_type"])
+    )
+
+    eligible = (
+        to_legs.join(from_legs, on="transfer_group_id", how="left")
+        .filter((pl.col("from_owner") == "booth_in_lyon") | (pl.col("from_type") == "savings"))
+    )
+
+    if eligible.is_empty():
+        return pl.DataFrame(schema=_PERSONAL_INCOME_SCHEMA)
+
+    return eligible.select(["date", "label", "amount", "transfer_group_id"]).with_columns(
+        pl.col("date").dt.year().alias("year"),
+        pl.col("date").dt.month().alias("month_num"),
+    )

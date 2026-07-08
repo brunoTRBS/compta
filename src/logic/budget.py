@@ -58,6 +58,7 @@ def compute_cumulative_balance(
     year: int,
     month: int,
     extra_monthly_benefice: pl.DataFrame | None = None,
+    opening_balance: float = 0.0,
 ) -> float:
     """Solde cumulé (revenus - dépenses) de tous les mois strictement avant (year, month).
 
@@ -69,8 +70,11 @@ def compute_cumulative_balance(
         extra_monthly_benefice: bénéfice mensuel d'une autre activité à intégrer au cumul
             (colonnes year, month_num, benefice — voir src.logic.revenue.monthly_benefice).
             Optionnel, pour ne pas affecter les appelants qui n'en ont pas besoin.
+        opening_balance: solde réel connu avant la première transaction trackée (ex : le
+            solde perso au moment où le suivi a commencé). Ajouté tel quel, sans condition
+            de date — à l'appelant de ne le passer que pour les mois où il s'applique.
     """
-    base = 0.0
+    base = opening_balance
     if not df.is_empty():
         before = df.filter(
             (pl.col("date").dt.year() < year)
@@ -79,7 +83,7 @@ def compute_cumulative_balance(
         if not before.is_empty():
             income = float(before.filter(pl.col("amount") > 0)["amount"].sum() or 0.0)
             expenses = abs(float(before.filter(pl.col("amount") < 0)["amount"].sum() or 0.0))
-            base = income - expenses
+            base += income - expenses
 
     if extra_monthly_benefice is not None and not extra_monthly_benefice.is_empty():
         extra_before = extra_monthly_benefice.filter(

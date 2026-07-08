@@ -65,4 +65,14 @@ VERSEMENT_LIBERATOIRE_RATES: dict[BusinessId, Decimal] = {
     BusinessId.BOOTH_IN_LYON: Decimal("0.017"),  # 1.7 % BIC services
 }
 
+# ---------------------------------------------------------------------------
+# Budget Perso — solde d'ouverture
+# Le suivi dans l'app a commencé en mai 2025 ; le solde réel disponible fin
+# avril 2025 (avant la première transaction trackée) n'était pas 0.
+# Point de départ fixe du cumul "Total fin du mois" sur Budget Perso.
+# ---------------------------------------------------------------------------
+PERSO_OPENING_BALANCE = Decimal("1230.10")
+PERSO_OPENING_BALANCE_YEAR = 2025
+PERSO_OPENING_BALANCE_MONTH = 5  # s'applique à partir de ce mois inclus
+
 

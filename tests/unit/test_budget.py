@@ -193,3 +193,27 @@ class TestComputeCumulativeBalance:
         with_none = compute_cumulative_balance(three_month_history, year=2024, month=7, extra_monthly_benefice=None)
         without_arg = compute_cumulative_balance(three_month_history, year=2024, month=7)
         assert with_none == pytest.approx(without_arg)
+
+    def test_opening_balance_is_added_not_replaced(self, three_month_history):
+        # Sans solde d'ouverture : 300 (mai+juin) avant juillet
+        result = compute_cumulative_balance(
+            three_month_history, year=2024, month=7, opening_balance=1230.10
+        )
+        assert result == pytest.approx(300.0 + 1230.10)
+
+    def test_opening_balance_alone_on_empty_history(self):
+        empty = pl.DataFrame({"date": [], "amount": []}, schema={"date": pl.Date, "amount": pl.Float64})
+        result = compute_cumulative_balance(empty, year=2025, month=5, opening_balance=1230.10)
+        assert result == pytest.approx(1230.10)
+
+    def test_opening_balance_combines_with_extra_monthly_benefice(self, three_month_history):
+        extra = pl.DataFrame({
+            "year": pl.Series([2024], dtype=pl.Int32),
+            "month_num": pl.Series([5], dtype=pl.Int32),
+            "benefice": pl.Series([40.0], dtype=pl.Float64),
+        })
+        result = compute_cumulative_balance(
+            three_month_history, year=2024, month=7,
+            extra_monthly_benefice=extra, opening_balance=1230.10,
+        )
+        assert result == pytest.approx(300.0 + 40.0 + 1230.10)

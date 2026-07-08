@@ -2,7 +2,7 @@ import polars as pl
 import pytest
 from datetime import date
 
-from src.logic.consolidated import flows_per_account, pair_transfers
+from src.logic.consolidated import flows_per_account, pair_transfers, personal_income_from_transfers
 
 
 @pytest.fixture
@@ -95,4 +95,68 @@ class TestPairTransfers:
             "is_transfer": [False],
         })
         result = pair_transfers(no_transfers, sample_accounts)
+        assert result.is_empty()
+
+
+@pytest.fixture
+def transfer_scenarios():
+    """4 virements : Booth→Perso et Livret→Perso (éligibles), Phi→Perso et Perso→Commun (non)."""
+    return pl.DataFrame({
+        "transfer_group_id": ["tg-booth", "tg-booth", "tg-livret", "tg-livret", "tg-phi", "tg-phi", "tg-interne", "tg-interne"],
+        "date": pl.Series([date(2024, 6, 1)] * 8, dtype=pl.Date),
+        "label": [
+            "Retrait Booth", "Retrait Booth",
+            "Désépargne", "Désépargne",
+            "Reversement Phi", "Reversement Phi",
+            "Perso vers commun", "Perso vers commun",
+        ],
+        "amount": pl.Series([-200.0, 200.0, -100.0, 100.0, -300.0, 300.0, -80.0, 80.0], dtype=pl.Float64),
+        "account_id": [
+            "acc-photobooth", "acc-perso",
+            "acc-livret", "acc-perso",
+            "acc-coaching", "acc-perso",
+            "acc-perso", "acc-commun",
+        ],
+        "is_transfer": [True] * 8,
+    })
+
+
+class TestPersonalIncomeFromTransfers:
+    def test_booth_to_perso_is_eligible(self, sample_accounts, transfer_scenarios):
+        result = personal_income_from_transfers(transfer_scenarios, sample_accounts)
+        assert "tg-booth" in result["transfer_group_id"].to_list()
+
+    def test_livret_to_perso_is_eligible(self, sample_accounts, transfer_scenarios):
+        result = personal_income_from_transfers(transfer_scenarios, sample_accounts)
+        assert "tg-livret" in result["transfer_group_id"].to_list()
+
+    def test_phi_rising_to_perso_excluded(self, sample_accounts, transfer_scenarios):
+        result = personal_income_from_transfers(transfer_scenarios, sample_accounts)
+        assert "tg-phi" not in result["transfer_group_id"].to_list()
+
+    def test_perso_to_perso_excluded(self, sample_accounts, transfer_scenarios):
+        result = personal_income_from_transfers(transfer_scenarios, sample_accounts)
+        assert "tg-interne" not in result["transfer_group_id"].to_list()
+
+    def test_only_two_eligible_rows(self, sample_accounts, transfer_scenarios):
+        result = personal_income_from_transfers(transfer_scenarios, sample_accounts)
+        assert result.shape[0] == 2
+
+    def test_amounts_are_positive(self, sample_accounts, transfer_scenarios):
+        result = personal_income_from_transfers(transfer_scenarios, sample_accounts)
+        assert (result["amount"] > 0).all()
+
+    def test_year_month_columns_present(self, sample_accounts, transfer_scenarios):
+        result = personal_income_from_transfers(transfer_scenarios, sample_accounts)
+        assert result["year"][0] == 2024
+        assert result["month_num"][0] == 6
+
+    def test_empty_transactions_returns_empty(self, sample_accounts):
+        empty = pl.DataFrame(schema={"is_transfer": pl.Boolean})
+        result = personal_income_from_transfers(empty, sample_accounts)
+        assert result.is_empty()
+
+    def test_empty_accounts_returns_empty(self, transfer_scenarios):
+        empty = pl.DataFrame(schema={"id": pl.Utf8, "owner": pl.Utf8, "type": pl.Utf8})
+        result = personal_income_from_transfers(transfer_scenarios, empty)
         assert result.is_empty()
