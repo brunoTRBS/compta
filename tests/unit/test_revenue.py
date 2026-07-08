@@ -2,7 +2,7 @@ import polars as pl
 import pytest
 
 from src.config import BusinessId
-from src.logic.revenue import aggregate_monthly, compute_net_margin, compute_ytd_summary
+from src.logic.revenue import aggregate_monthly, compute_net_margin, compute_ytd_summary, monthly_benefice
 
 
 class TestAggregateMonthly:
@@ -150,3 +150,46 @@ class TestComputeNetMargin:
 
     def test_negative_margin(self):
         assert compute_net_margin(500.0, 300.0, 300.0) == pytest.approx(-100.0)
+
+
+class TestMonthlyBenefice:
+    def test_one_row_per_month_present(self, phi_rising_transactions):
+        # La fixture ne couvre que janvier 2024
+        result = monthly_benefice(phi_rising_transactions, BusinessId.PHI_RISING)
+        assert result.shape[0] == 1
+        assert result["year"][0] == 2024
+        assert result["month_num"][0] == 1
+
+    def test_benefice_matches_ca_minus_expenses_minus_cotisations(self, phi_rising_transactions):
+        result = monthly_benefice(phi_rising_transactions, BusinessId.PHI_RISING)
+        summary = compute_ytd_summary(phi_rising_transactions, BusinessId.PHI_RISING, year=2024)
+        expected = summary["ca"] - summary["expenses"] - summary["total_charges"]
+        assert result["benefice"][0] == pytest.approx(expected)
+
+    def test_empty_dataframe_returns_empty(self):
+        empty = pl.DataFrame(
+            {"date": [], "amount": [], "category": [], "business_id": []},
+            schema={"date": pl.Date, "amount": pl.Float64, "category": pl.Utf8, "business_id": pl.Utf8},
+        )
+        result = monthly_benefice(empty, BusinessId.PHI_RISING)
+        assert result.is_empty()
+        assert set(result.columns) == {"year", "month_num", "benefice"}
+
+    def test_multiple_months_isolated_independently(self):
+        from datetime import date
+        df = pl.DataFrame({
+            "date": pl.Series([date(2024, 1, 10), date(2024, 2, 10)], dtype=pl.Date),
+            "amount": pl.Series([1000.0, 2000.0], dtype=pl.Float64),
+            "label": ["Coaching Jan", "Coaching Fév"],
+            "source": ["manual", "manual"],
+            "business_id": ["phi_rising", "phi_rising"],
+            "category": ["BNC", "BNC"],
+            "is_income": [True, True],
+        })
+        result = monthly_benefice(df, BusinessId.PHI_RISING)
+        assert result.shape[0] == 2
+        jan = result.filter(pl.col("month_num") == 1)
+        feb = result.filter(pl.col("month_num") == 2)
+        # BNC taxé à 28% : 1000*0.72=720 vs 2000*0.72=1440, jamais mélangés
+        assert jan["benefice"][0] == pytest.approx(720.0)
+        assert feb["benefice"][0] == pytest.approx(1440.0)

@@ -164,3 +164,32 @@ class TestComputeCumulativeBalance:
     def test_empty_dataframe_returns_zero(self):
         empty = pl.DataFrame({"date": [], "amount": []}, schema={"date": pl.Date, "amount": pl.Float64})
         assert compute_cumulative_balance(empty, year=2024, month=6) == 0.0
+
+    def test_extra_monthly_benefice_is_added(self, three_month_history):
+        # Perso seul avant juillet : 300 (mai+juin). + bénéfice Phi Rising mai(+50) juin(+30) = 380
+        extra = pl.DataFrame({
+            "year": pl.Series([2024, 2024, 2024], dtype=pl.Int32),
+            "month_num": pl.Series([5, 6, 7], dtype=pl.Int32),
+            "benefice": pl.Series([50.0, 30.0, 999.0], dtype=pl.Float64),
+        })
+        result = compute_cumulative_balance(
+            three_month_history, year=2024, month=7, extra_monthly_benefice=extra
+        )
+        assert result == pytest.approx(300.0 + 50.0 + 30.0)
+
+    def test_extra_monthly_benefice_respects_month_boundary(self, three_month_history):
+        # Juillet (999) ne doit pas être inclus dans le cumul avant juillet
+        extra = pl.DataFrame({
+            "year": pl.Series([2024], dtype=pl.Int32),
+            "month_num": pl.Series([7], dtype=pl.Int32),
+            "benefice": pl.Series([999.0], dtype=pl.Float64),
+        })
+        result = compute_cumulative_balance(
+            three_month_history, year=2024, month=7, extra_monthly_benefice=extra
+        )
+        assert result == pytest.approx(300.0)
+
+    def test_none_extra_monthly_benefice_unaffected(self, three_month_history):
+        with_none = compute_cumulative_balance(three_month_history, year=2024, month=7, extra_monthly_benefice=None)
+        without_arg = compute_cumulative_balance(three_month_history, year=2024, month=7)
+        assert with_none == pytest.approx(without_arg)

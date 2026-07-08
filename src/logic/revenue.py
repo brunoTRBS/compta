@@ -156,6 +156,39 @@ def compute_ytd_summary(
     }
 
 
+def monthly_benefice(df: pl.DataFrame, business_id: BusinessId) -> pl.DataFrame:
+    """Bénéfice net (CA - dépenses - cotisations URSSAF) mois par mois, sur tout l'historique de df.
+
+    Contrairement à compute_ytd_summary (agrégat annuel), isole chaque mois présent dans df
+    et lui applique la même formule de bénéfice net que la Vue mensuelle de chaque activité.
+
+    Returns:
+        DataFrame : year (Int32), month_num (Int32), benefice (Float64). Vide si df est vide.
+    """
+    schema = {"year": pl.Int32, "month_num": pl.Int32, "benefice": pl.Float64}
+    if df.is_empty():
+        return pl.DataFrame(schema=schema)
+
+    periods = (
+        df.select(
+            pl.col("date").dt.year().alias("year"),
+            pl.col("date").dt.month().alias("month_num"),
+        )
+        .unique()
+        .sort(["year", "month_num"])
+    )
+
+    rows = []
+    for year, month_num in periods.iter_rows():
+        month_df = df.filter(
+            (pl.col("date").dt.year() == year) & (pl.col("date").dt.month() == month_num)
+        )
+        summary = compute_ytd_summary(month_df, business_id, year)
+        rows.append({"year": year, "month_num": month_num, "benefice": summary["net_margin"]})
+
+    return pl.DataFrame(rows, schema=schema)
+
+
 def compute_net_margin(ca: float, expenses: float, total_charges: float) -> float:
     """Calcule la marge nette : CA - charges - cotisations."""
     return ca - expenses - total_charges

@@ -53,25 +53,41 @@ def compute_savings_rate(income: float, expenses: float) -> float:
     return round((income - expenses) / income * 100, 1)
 
 
-def compute_cumulative_balance(df: pl.DataFrame, year: int, month: int) -> float:
+def compute_cumulative_balance(
+    df: pl.DataFrame,
+    year: int,
+    month: int,
+    extra_monthly_benefice: pl.DataFrame | None = None,
+) -> float:
     """Solde cumulé (revenus - dépenses) de tous les mois strictement avant (year, month).
 
     Contrairement à un simple "mois précédent", additionne tout l'historique disponible
     dans df pour ne jamais "oublier" les mois antérieurs au dernier.
+
+    Args:
+        df: transactions (ex : Perso) pour le calcul revenus - dépenses.
+        extra_monthly_benefice: bénéfice mensuel d'une autre activité à intégrer au cumul
+            (colonnes year, month_num, benefice — voir src.logic.revenue.monthly_benefice).
+            Optionnel, pour ne pas affecter les appelants qui n'en ont pas besoin.
     """
-    if df.is_empty():
-        return 0.0
+    base = 0.0
+    if not df.is_empty():
+        before = df.filter(
+            (pl.col("date").dt.year() < year)
+            | ((pl.col("date").dt.year() == year) & (pl.col("date").dt.month() < month))
+        )
+        if not before.is_empty():
+            income = float(before.filter(pl.col("amount") > 0)["amount"].sum() or 0.0)
+            expenses = abs(float(before.filter(pl.col("amount") < 0)["amount"].sum() or 0.0))
+            base = income - expenses
 
-    before = df.filter(
-        (pl.col("date").dt.year() < year)
-        | ((pl.col("date").dt.year() == year) & (pl.col("date").dt.month() < month))
-    )
-    if before.is_empty():
-        return 0.0
+    if extra_monthly_benefice is not None and not extra_monthly_benefice.is_empty():
+        extra_before = extra_monthly_benefice.filter(
+            (pl.col("year") < year) | ((pl.col("year") == year) & (pl.col("month_num") < month))
+        )
+        base += float(extra_before["benefice"].sum() or 0.0)
 
-    income = float(before.filter(pl.col("amount") > 0)["amount"].sum() or 0.0)
-    expenses = abs(float(before.filter(pl.col("amount") < 0)["amount"].sum() or 0.0))
-    return income - expenses
+    return base
 
 
 def compute_budget_summary(

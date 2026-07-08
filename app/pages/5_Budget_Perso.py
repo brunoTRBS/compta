@@ -7,6 +7,7 @@ from datetime import date
 
 from src.config import BusinessId
 from src.logic.budget import breakdown_by_category, compute_budget_summary, compute_cumulative_balance
+from src.logic.revenue import monthly_benefice
 from app.components.auth import require_auth
 from src.services.db_reader import read_transactions
 
@@ -53,11 +54,22 @@ try:
     # Historique complet : nécessaire pour calculer un vrai solde cumulé
     # (et non juste "mois précédent - mois actuel").
     df_all_personal = read_transactions(business_id=str(BusinessId.PERSONAL))
+    # Le bénéfice Phi Rising compte comme un revenu perso (micro-entreprise : pas de
+    # séparation légale entre bénéfice pro et patrimoine perso). Booth in Lyon n'est
+    # volontairement jamais inclus ici : cet argent est mis de côté, pas disponible.
+    phi_all_df = read_transactions(business_id=str(BusinessId.PHI_RISING))
 except Exception as exc:
     st.error(f"Impossible de charger les transactions : {exc}")
     st.stop()
 
 summary = compute_budget_summary(df, year, selected_month)
+phi_monthly = monthly_benefice(phi_all_df, BusinessId.PHI_RISING)
+
+def _benefice_for_month(monthly_df: pl.DataFrame, target_year: int, target_month: int) -> float:
+    row = monthly_df.filter(
+        (pl.col("year") == target_year) & (pl.col("month_num") == target_month)
+    )
+    return float(row["benefice"][0]) if not row.is_empty() else 0.0
 
 def _savings_amount(frame: pl.DataFrame) -> float:
     filtered = frame.filter(
@@ -65,10 +77,14 @@ def _savings_amount(frame: pl.DataFrame) -> float:
     )
     return abs(float(filtered["amount"].sum() or 0.0))
 
+phi_benefice_month = _benefice_for_month(phi_monthly, year, selected_month)
 savings = _savings_amount(df)
 expenses_excl_savings = summary["expenses"] - savings
-difference = summary["savings"]
-reste_n1 = compute_cumulative_balance(df_all_personal, year, selected_month)
+adjusted_income = summary["income"] + phi_benefice_month
+difference = adjusted_income - summary["expenses"]
+reste_n1 = compute_cumulative_balance(
+    df_all_personal, year, selected_month, extra_monthly_benefice=phi_monthly
+)
 total_fin_mois = reste_n1 + difference
 
 # ---------------------------------------------------------------------------
@@ -78,7 +94,8 @@ period_label = f"{_MONTH_LABELS[selected_month]} {year}"
 st.subheader(f"Résumé {period_label}")
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Revenus", f"{summary['income']:,.0f} €")
+c1.metric("Revenus", f"{adjusted_income:,.0f} €")
+c1.caption(f"dont {phi_benefice_month:,.0f} € bénéfice Phi Rising")
 c2.metric("Dépenses", f"{expenses_excl_savings:,.0f} €")
 c3.metric("Épargne", f"{savings:,.0f} €")
 c4.metric("Différence", f"{difference:,.0f} €", delta=f"{difference:+,.0f} €" if difference != 0 else None)
