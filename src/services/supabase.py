@@ -5,6 +5,7 @@ Règle d'usage :
 - Pour les lectures analytiques vers Polars, utiliser db_reader.py (REST API).
 """
 
+import uuid
 from typing import Any
 
 import streamlit as st
@@ -116,6 +117,51 @@ def bulk_update_categories(updates: list[dict[str, str]]) -> None:
     client = get_supabase()
     for item in updates:
         client.table("transactions").update({"category": item["category"]}).eq("id", item["id"]).execute()
+
+
+def insert_transfer(
+    from_account_id: str,
+    to_account_id: str,
+    from_business_id: str,
+    to_business_id: str,
+    amount: float,
+    date: str,
+    label: str,
+    notes: str | None = None,
+) -> list[dict[str, Any]]:
+    """Crée un virement entre 2 comptes : 2 écritures liées, jamais comptées comme du CA.
+
+    Les deux lignes partagent un transfer_group_id et sont marquées is_transfer=true,
+    ce qui les exclut par défaut des calculs de CA/dépenses/URSSAF (voir db_reader.read_transactions).
+    """
+    transfer_group_id = str(uuid.uuid4())
+    signed_amount = abs(float(amount))
+    rows = [
+        {
+            "date": date,
+            "amount": -signed_amount,
+            "label": label,
+            "source": "manual",
+            "business_id": from_business_id,
+            "account_id": from_account_id,
+            "is_transfer": True,
+            "transfer_group_id": transfer_group_id,
+            "notes": notes,
+        },
+        {
+            "date": date,
+            "amount": signed_amount,
+            "label": label,
+            "source": "manual",
+            "business_id": to_business_id,
+            "account_id": to_account_id,
+            "is_transfer": True,
+            "transfer_group_id": transfer_group_id,
+            "notes": notes,
+        },
+    ]
+    result = get_supabase().table("transactions").insert(rows).execute()
+    return result.data
 
 
 # ---------------------------------------------------------------------------

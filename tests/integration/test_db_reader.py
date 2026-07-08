@@ -38,6 +38,9 @@ _TX_ROW = {
     "is_income": True,
     "external_id": "gc-1",
     "created_at": "2024-03-01T10:00:00+00:00",
+    "account_id": "acc-1",
+    "is_transfer": False,
+    "transfer_group_id": None,
 }
 
 
@@ -102,6 +105,21 @@ class TestReadTransactions:
             client.eq.assert_any_call("business_id", "booth_in_lyon")
             client.gte.assert_any_call("date", "2024-06-01")
             client.lte.assert_any_call("date", "2024-06-30")
+
+    def test_transfers_excluded_by_default(self):
+        client = _chain_mock([])
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            db_reader.read_transactions()
+            client.eq.assert_any_call("is_transfer", False)
+
+    def test_include_transfers_skips_the_filter(self):
+        client = _chain_mock([])
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            db_reader.read_transactions(include_transfers=True)
+            with pytest.raises(AssertionError):
+                client.eq.assert_any_call("is_transfer", False)
 
 
 # ---------------------------------------------------------------------------

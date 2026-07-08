@@ -7,12 +7,13 @@ import streamlit as st
 
 from src.config import BusinessId, TransactionSource
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
-from src.services.db_reader import invalidate_cache, read_categories, read_transactions
+from src.services.db_reader import invalidate_cache, read_accounts, read_categories, read_transactions
 from src.services.supabase import (
     bulk_update_categories,
     delete_transaction,
     fetch_categorization_rules,
     insert_transaction,
+    insert_transfer,
     update_transaction,
 )
 from app.components.auth import require_auth
@@ -47,8 +48,17 @@ _cats_by_biz_dir: dict[tuple[str, str], list[str]] = {
     for direction in ["income", "expense"]
 } if not _all_cats_df.is_empty() else {}
 
-tab_new, tab_pending, tab_edit = st.tabs(
-    ["➕ Nouvelle transaction", "⏳ En attente de catégorisation", "✏️ Corriger des transactions"]
+# Comptes chargés une fois pour toute la page
+_accounts_df = read_accounts()
+_accounts_by_owner: dict[str, list[dict]] = {
+    biz_id: _accounts_df.filter(pl.col("owner") == biz_id).sort("name").to_dicts()
+    for biz_id in [str(BusinessId.PHI_RISING), str(BusinessId.BOOTH_IN_LYON), str(BusinessId.PERSONAL)]
+} if not _accounts_df.is_empty() else {}
+_all_accounts_list: list[dict] = _accounts_df.sort("name").to_dicts() if not _accounts_df.is_empty() else []
+
+tab_new, tab_transfer, tab_pending, tab_edit = st.tabs(
+    ["➕ Nouvelle transaction", "🔁 Virement entre comptes",
+     "⏳ En attente de catégorisation", "✏️ Corriger des transactions"]
 )
 
 # ---------------------------------------------------------------------------
@@ -58,12 +68,21 @@ with tab_new:
     st.subheader("Ajouter une transaction manuelle")
     st.caption("Idéal pour les paiements en espèces ou les opérations non importées.")
 
-    # Hors formulaire : réagit immédiatement pour filtrer les catégories
-    col_biz, col_type = st.columns(2)
+    # Hors formulaire : réagit immédiatement pour filtrer les catégories et les comptes
+    col_biz, col_account, col_type = st.columns(3)
     tx_business_label = col_biz.selectbox("Activité", list(_BUSINESS_LABELS.keys()), key="new_tx_biz")
+    tx_biz_id = _BUSINESS_LABELS[tx_business_label]
+
+    biz_accounts = _accounts_by_owner.get(tx_biz_id, [])
+    tx_account_options = {f"{a['name']} ({a.get('institution', '?')})": a["id"] for a in biz_accounts}
+    tx_account_label = col_account.selectbox(
+        "Compte",
+        list(tx_account_options.keys()) or ["— Aucun compte configuré —"],
+        key="new_tx_account",
+    )
+
     tx_type = col_type.radio("Type", ["Dépense", "Revenu"], horizontal=True, key="new_tx_type")
 
-    tx_biz_id = _BUSINESS_LABELS[tx_business_label]
     tx_direction = "expense" if tx_type == "Dépense" else "income"
     filtered_cats = _cats_by_biz_dir.get((tx_biz_id, tx_direction), [])
 
@@ -99,6 +118,7 @@ with tab_new:
                 "label": tx_label.strip(),
                 "source": str(TransactionSource.MANUAL),
                 "business_id": tx_biz_id,
+                "account_id": tx_account_options.get(tx_account_label),
                 "category": tx_category if tx_category != "— Laisser vide —" else None,
                 "notes": tx_notes.strip() or None,
             }
@@ -110,7 +130,72 @@ with tab_new:
                 st.error(f"Erreur lors de l'ajout : {exc}")
 
 # ---------------------------------------------------------------------------
-# Onglet 2 — File des transactions en attente
+# Onglet 2 — Virement entre comptes
+# ---------------------------------------------------------------------------
+with tab_transfer:
+    st.subheader("Virement entre deux comptes")
+    st.caption(
+        "Pour déplacer de l'argent d'un compte à un autre (ex : retirer de l'argent du "
+        "compte Booth in Lyon vers le compte perso). N'affecte jamais le CA, les dépenses "
+        "ou l'URSSAF — seulement le solde des 2 comptes concernés."
+    )
+
+    if len(_all_accounts_list) < 2:
+        st.info("Il faut au moins 2 comptes configurés pour enregistrer un virement.")
+    else:
+        transfer_account_options = {
+            f"{a['name']} ({a.get('institution', '?')})": a for a in _all_accounts_list
+        }
+
+        col_from, col_to = st.columns(2)
+        transfer_from_label = col_from.selectbox(
+            "Compte source (débité)", list(transfer_account_options.keys()), key="transfer_from"
+        )
+        transfer_to_choices = [
+            label for label in transfer_account_options if label != transfer_from_label
+        ]
+        transfer_to_label = col_to.selectbox(
+            "Compte destination (crédité)", transfer_to_choices, key="transfer_to"
+        )
+
+        with st.form("form_transfer", clear_on_submit=True):
+            col_date, col_amount = st.columns(2)
+            transfer_date = col_date.date_input("Date", value=date.today(), key="transfer_date")
+            transfer_amount = col_amount.number_input(
+                "Montant (€)", min_value=0.0, step=0.01, format="%.2f", key="transfer_amount"
+            )
+            transfer_label = st.text_input(
+                "Libellé", value="Virement interne", max_chars=200, key="transfer_label"
+            )
+            submitted_transfer = st.form_submit_button("Enregistrer le virement", width='stretch')
+
+        if submitted_transfer:
+            if transfer_amount <= 0:
+                st.error("Le montant doit être positif.")
+            else:
+                from_account = transfer_account_options[transfer_from_label]
+                to_account = transfer_account_options[transfer_to_label]
+                try:
+                    insert_transfer(
+                        from_account_id=from_account["id"],
+                        to_account_id=to_account["id"],
+                        from_business_id=from_account["owner"],
+                        to_business_id=to_account["owner"],
+                        amount=float(transfer_amount),
+                        date=transfer_date.isoformat(),
+                        label=transfer_label.strip() or "Virement interne",
+                    )
+                    invalidate_cache()
+                    st.toast(
+                        f"Virement de {transfer_amount:.2f} € : "
+                        f"{transfer_from_label} → {transfer_to_label} ✅",
+                        icon="✅",
+                    )
+                except Exception as exc:
+                    st.error(f"Erreur lors de l'enregistrement : {exc}")
+
+# ---------------------------------------------------------------------------
+# Onglet 3 — File des transactions en attente
 # ---------------------------------------------------------------------------
 with tab_pending:
     st.subheader("Transactions sans catégorie")
@@ -182,7 +267,7 @@ with tab_pending:
         st.info("Aucune transaction trouvée pour cette période.")
 
 # ---------------------------------------------------------------------------
-# Onglet 3 — Correction complète
+# Onglet 4 — Correction complète
 # ---------------------------------------------------------------------------
 with tab_edit:
     st.subheader("Éditer des transactions existantes")
@@ -212,6 +297,15 @@ with tab_edit:
     if df_edit.is_empty():
         st.info("Aucune transaction sur cette période.")
     else:
+        # Comptes possibles pour cette activité (ex : Perso a 3 comptes réels)
+        biz_accounts_df = _accounts_df.filter(pl.col("owner") == edit_biz_id) if not _accounts_df.is_empty() else pl.DataFrame()
+        _id_to_name: dict[str, str] = (
+            dict(zip(biz_accounts_df["id"].to_list(), biz_accounts_df["name"].to_list()))
+            if not biz_accounts_df.is_empty() else {}
+        )
+        _name_to_id: dict[str, str] = {v: k for k, v in _id_to_name.items()}
+        _account_name_options = sorted(_id_to_name.values())
+
         # Stocker le snapshot d'origine pour détecter les changements
         origin_key = f"edit_origin_{edit_biz_id}_{edit_year}"
         if origin_key not in st.session_state:
@@ -227,9 +321,15 @@ with tab_edit:
                     "Aucun revenu sur cette période." if direction == "income"
                     else "Aucune dépense sur cette période."
                 )
-                return direction_df.select(display_cols)
+                return direction_df.select(display_cols + ["account_id"])
 
-            display_df = direction_df.select(display_cols).with_columns(pl.col("amount").abs())
+            with_account_name = direction_df.with_columns(
+                pl.col("account_id").map_elements(_id_to_name.get, return_dtype=pl.Utf8).alias("compte")
+            )
+            display_df = (
+                with_account_name.select(display_cols + ["compte"])
+                .with_columns(pl.col("amount").abs())
+            )
             cats = _cats_by_biz_dir.get((edit_biz_id, direction)) or _cats_by_biz.get(
                 edit_biz_id, _all_category_names
             )
@@ -248,11 +348,18 @@ with tab_edit:
                     "category": st.column_config.SelectboxColumn(
                         "Catégorie", options=cats, required=False,
                     ),
+                    "compte": st.column_config.SelectboxColumn(
+                        "Compte", options=_account_name_options, required=False,
+                    ),
                     "notes": st.column_config.TextColumn("Notes"),
                 },
             )
             if not isinstance(edited_dir, pl.DataFrame):
                 edited_dir = pl.from_pandas(edited_dir)
+
+            edited_dir = edited_dir.with_columns(
+                pl.col("compte").map_elements(_name_to_id.get, return_dtype=pl.Utf8).alias("account_id")
+            ).drop("compte")
 
             sign = 1.0 if direction == "income" else -1.0
             return edited_dir.with_columns((pl.col("amount").abs() * sign).alias("amount"))

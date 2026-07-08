@@ -17,7 +17,10 @@ from src.services.supabase import get_supabase
 
 _CACHE_TTL = 300
 
-_TXN_COLS = "id,date,amount,label,source,business_id,category,is_income,external_id,created_at"
+_TXN_COLS = (
+    "id,date,amount,label,source,business_id,category,is_income,external_id,created_at,"
+    "account_id,is_transfer,transfer_group_id"
+)
 _TXN_LIMIT = 50_000
 
 _TXN_SCHEMA: dict[str, type[pl.DataType]] = {
@@ -31,6 +34,9 @@ _TXN_SCHEMA: dict[str, type[pl.DataType]] = {
     "is_income": pl.Boolean,
     "external_id": pl.Utf8,
     "created_at": pl.Datetime("us", "UTC"),
+    "account_id": pl.Utf8,
+    "is_transfer": pl.Boolean,
+    "transfer_group_id": pl.Utf8,
 }
 
 
@@ -41,12 +47,22 @@ def read_transactions(
     month: int | None = None,
     date_from: Date | None = None,
     date_to: Date | None = None,
+    include_transfers: bool = False,
 ) -> pl.DataFrame:
-    """Lit les transactions via Supabase REST. Retourne un DataFrame Polars typé."""
+    """Lit les transactions via Supabase REST. Retourne un DataFrame Polars typé.
+
+    Par défaut, exclut les virements internes (is_transfer=true) : ils ne
+    représentent jamais du CA, une dépense ou une base URSSAF, seulement un
+    déplacement d'argent entre deux comptes. Passer include_transfers=True
+    pour les vues qui suivent l'argent compte par compte (ex : Vue consolidée).
+    """
     q = get_supabase().table("transactions").select(_TXN_COLS)
 
     if business_id is not None:
         q = q.eq("business_id", business_id)
+
+    if not include_transfers:
+        q = q.eq("is_transfer", False)
 
     if date_from is not None:
         q = q.gte("date", date_from.isoformat())
@@ -242,5 +258,6 @@ def _cast_transactions(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("date").cast(pl.Date),
         pl.col("amount").cast(pl.Float64),
         pl.col("is_income").cast(pl.Boolean),
+        pl.col("is_transfer").cast(pl.Boolean),
         pl.col("created_at").str.to_datetime(time_unit="us", time_zone="UTC"),
     )

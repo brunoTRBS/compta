@@ -170,3 +170,67 @@ class TestInsertTransaction:
         from src.services.supabase import insert_transaction
         result = insert_transaction(row)
         assert result["id"] == "new-id"
+
+
+# ---------------------------------------------------------------------------
+# insert_transfer
+# ---------------------------------------------------------------------------
+
+class TestInsertTransfer:
+    @patch("src.services.supabase.get_supabase")
+    def test_creates_two_linked_rows(self, mock_get):
+        mock_client = _make_supabase_mock([{"id": "row-1"}, {"id": "row-2"}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import insert_transfer
+        insert_transfer(
+            from_account_id="acc-booth",
+            to_account_id="acc-perso",
+            from_business_id="booth_in_lyon",
+            to_business_id="personal",
+            amount=200.0,
+            date="2024-06-01",
+            label="Retrait Revolut vers perso",
+        )
+
+        rows = mock_client.table.return_value.insert.call_args[0][0]
+        assert len(rows) == 2
+        assert all(r["is_transfer"] is True for r in rows)
+        assert rows[0]["transfer_group_id"] == rows[1]["transfer_group_id"]
+
+    @patch("src.services.supabase.get_supabase")
+    def test_amounts_are_opposite_signs(self, mock_get):
+        mock_client = _make_supabase_mock([{"id": "row-1"}, {"id": "row-2"}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import insert_transfer
+        insert_transfer(
+            from_account_id="acc-a", to_account_id="acc-b",
+            from_business_id="phi_rising", to_business_id="personal",
+            amount=-150.0,  # signe fourni indifférent, doit toujours ressortir en valeur absolue
+            date="2024-06-01", label="Virement",
+        )
+
+        rows = mock_client.table.return_value.insert.call_args[0][0]
+        from_row = next(r for r in rows if r["account_id"] == "acc-a")
+        to_row = next(r for r in rows if r["account_id"] == "acc-b")
+        assert from_row["amount"] == -150.0
+        assert to_row["amount"] == 150.0
+
+    @patch("src.services.supabase.get_supabase")
+    def test_business_id_follows_each_account(self, mock_get):
+        mock_client = _make_supabase_mock([{"id": "row-1"}, {"id": "row-2"}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import insert_transfer
+        insert_transfer(
+            from_account_id="acc-booth", to_account_id="acc-perso",
+            from_business_id="booth_in_lyon", to_business_id="personal",
+            amount=200.0, date="2024-06-01", label="Retrait",
+        )
+
+        rows = mock_client.table.return_value.insert.call_args[0][0]
+        from_row = next(r for r in rows if r["account_id"] == "acc-booth")
+        to_row = next(r for r in rows if r["account_id"] == "acc-perso")
+        assert from_row["business_id"] == "booth_in_lyon"
+        assert to_row["business_id"] == "personal"
