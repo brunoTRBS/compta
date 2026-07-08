@@ -1,4 +1,9 @@
-"""Garde d'authentification Supabase Auth pour Streamlit.
+"""Garde d'authentification Supabase Auth pour Streamlit, avec session persistée via cookie.
+
+Le cookie (chiffré, navigateur) ne stocke que le refresh_token — l'access_token n'est
+jamais mis en cache au-delà de sa propre expiration (~1h côté Supabase). À chaque visite,
+si aucune session valide n'est en mémoire, un refresh silencieux est tenté à partir du
+cookie avant d'afficher le formulaire de connexion.
 
 Usage : appeler require_auth() en tête de chaque page.
 """
@@ -7,17 +12,20 @@ import time
 
 import streamlit as st
 from gotrue.errors import AuthApiError
+from streamlit_cookies_manager import EncryptedCookieManager
 
 from src.services.supabase import get_supabase
 
 _SESSION_KEY = "sb_session"
+_COOKIE_REFRESH_TOKEN = "refresh_token"
 
 
 def require_auth() -> None:
     """Bloque le rendu de la page si l'utilisateur n'est pas authentifié.
 
-    Affiche le formulaire de login et appelle st.stop() si non connecté.
-    Doit être appelé avant tout autre code dans chaque page.
+    Restaure automatiquement la session depuis le cookie si possible (évite de se
+    reconnecter à chaque visite), sinon affiche le formulaire de login et appelle
+    st.stop(). Doit être appelé avant tout autre code dans chaque page.
     """
     if str(st.secrets.get("DEV_MODE", "false")).lower() == "true":
         if not st.session_state.get(_SESSION_KEY):
@@ -29,21 +37,53 @@ def require_auth() -> None:
         _show_logout_button()
         return
 
-    session = st.session_state.get(_SESSION_KEY)
+    cookies = EncryptedCookieManager(
+        prefix="compta_auth/",
+        password=str(st.secrets.get("COOKIE_PASSWORD", "changeme-in-secrets-toml")),
+    )
+    if not cookies.ready():
+        st.stop()
 
-    if session is not None:
-        # Vérifier l'expiration du token
-        if session.get("expires_at", 0) > time.time():
+    session = st.session_state.get(_SESSION_KEY)
+    if session is not None and session.get("expires_at", 0) > time.time():
+        _show_logout_button()
+        return
+
+    # Pas de session valide en mémoire : tenter un refresh silencieux via le cookie
+    refresh_token = cookies.get(_COOKIE_REFRESH_TOKEN)
+    if refresh_token:
+        try:
+            response = get_supabase().auth.refresh_session(refresh_token)
+            _store_session(response, cookies)
             _show_logout_button()
             return
-        # Token expiré : nettoyer la session
-        st.session_state.pop(_SESSION_KEY, None)
+        except Exception:
+            _forget_session(cookies)
 
-    _render_login_form()
+    st.session_state.pop(_SESSION_KEY, None)
+    _render_login_form(cookies)
     st.stop()
 
 
-def _render_login_form() -> None:
+def _store_session(response, cookies: EncryptedCookieManager) -> None:
+    """Enregistre la session en mémoire et son refresh_token (rotatif) dans le cookie."""
+    st.session_state[_SESSION_KEY] = {
+        "access_token": response.session.access_token,
+        "expires_at": response.session.expires_at,
+        "user_email": response.user.email,
+    }
+    cookies[_COOKIE_REFRESH_TOKEN] = response.session.refresh_token
+    cookies.save()
+
+
+def _forget_session(cookies: EncryptedCookieManager) -> None:
+    st.session_state.pop(_SESSION_KEY, None)
+    if _COOKIE_REFRESH_TOKEN in cookies:
+        del cookies[_COOKIE_REFRESH_TOKEN]
+        cookies.save()
+
+
+def _render_login_form(cookies: EncryptedCookieManager) -> None:
     col = st.columns([1, 1, 1])[1]
     with col:
         st.markdown("### Connexion")
@@ -60,11 +100,7 @@ def _render_login_form() -> None:
                 response = get_supabase().auth.sign_in_with_password(
                     {"email": email, "password": password}
                 )
-                st.session_state[_SESSION_KEY] = {
-                    "access_token": response.session.access_token,
-                    "expires_at": response.session.expires_at,
-                    "user_email": response.user.email,
-                }
+                _store_session(response, cookies)
                 st.rerun()
             except AuthApiError as e:
                 st.error(f"Authentification refusée : {e.message}")
@@ -82,5 +118,11 @@ def _show_logout_button() -> None:
                 get_supabase().auth.sign_out()
             except Exception:
                 pass
+            cookies = EncryptedCookieManager(
+                prefix="compta_auth/",
+                password=str(st.secrets.get("COOKIE_PASSWORD", "changeme-in-secrets-toml")),
+            )
+            if cookies.ready():
+                _forget_session(cookies)
             st.session_state.clear()
             st.rerun()
