@@ -51,6 +51,7 @@ class TestComputeYtdSummary:
             "ca", "stripe_fees", "ca_for_urssaf", "expenses",
             "cotisations", "versement_liberatoire",
             "total_charges", "net_margin", "ca_threshold", "is_above_threshold",
+            "tva_threshold", "is_above_tva_threshold",
         }
         assert set(summary.keys()) == expected_keys
 
@@ -90,6 +91,26 @@ class TestComputeYtdSummary:
 
     def test_not_above_threshold(self, phi_rising_transactions):
         summary = compute_ytd_summary(phi_rising_transactions, BusinessId.PHI_RISING, year=2024)
+        assert not summary["is_above_threshold"]
+
+    def test_not_above_tva_threshold(self, phi_rising_transactions):
+        summary = compute_ytd_summary(phi_rising_transactions, BusinessId.PHI_RISING, year=2024)
+        assert not summary["is_above_tva_threshold"]
+
+    def test_above_tva_threshold_but_below_ca_threshold(self):
+        from datetime import date
+        df = pl.DataFrame({
+            "id": ["r1"],
+            "date": pl.Series([date(2024, 6, 1)], dtype=pl.Date),
+            "amount": pl.Series([40000.0], dtype=pl.Float64),
+            "label": ["Gros contrat"],
+            "source": ["manual"],
+            "business_id": ["phi_rising"],
+            "category": ["BNC"],
+            "is_income": [True],
+        })
+        summary = compute_ytd_summary(df, BusinessId.PHI_RISING, year=2024)
+        assert summary["is_above_tva_threshold"]
         assert not summary["is_above_threshold"]
 
     def test_net_margin_formula(self, phi_rising_transactions):

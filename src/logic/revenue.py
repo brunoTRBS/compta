@@ -8,6 +8,7 @@ import polars as pl
 from src.config import (
     BusinessId,
     CA_THRESHOLDS,
+    TVA_FRANCHISE_THRESHOLDS,
     URSSAF_RATES,
     URSSAF_RATES_BY_CATEGORY,
     VERSEMENT_LIBERATOIRE_RATES,
@@ -115,7 +116,8 @@ def compute_ytd_summary(
 
     Returns:
         dict avec les clés : ca, expenses, cotisations, versement_liberatoire,
-        total_charges, net_margin, ca_threshold, is_above_threshold.
+        total_charges, net_margin, ca_threshold, is_above_threshold,
+        tva_threshold, is_above_tva_threshold.
     """
     yearly = df.filter(pl.col("date").dt.year() == year)
 
@@ -136,6 +138,7 @@ def compute_ytd_summary(
     )
     total_charges = round(cotisations + versement_liberatoire, 2)
     threshold = float(CA_THRESHOLDS[business_id])
+    tva_threshold = float(TVA_FRANCHISE_THRESHOLDS[business_id])
 
     return {
         "ca": ca,
@@ -148,6 +151,8 @@ def compute_ytd_summary(
         "net_margin": ca - expenses - total_charges,
         "ca_threshold": threshold,
         "is_above_threshold": ca > threshold,
+        "tva_threshold": tva_threshold,
+        "is_above_tva_threshold": ca > tva_threshold,
     }
 
 

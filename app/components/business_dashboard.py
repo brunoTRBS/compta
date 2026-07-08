@@ -210,6 +210,12 @@ def _render_global_view(business_id: BusinessId) -> None:
             f"⚠️ CA ({summary['ca']:,.0f} €) dépasse le seuil micro-entreprise "
             f"({summary['ca_threshold']:,.0f} €). Consultez un expert-comptable."
         )
+    elif summary["is_above_tva_threshold"] and period_type == "Année complète":
+        st.warning(
+            f"⚠️ CA ({summary['ca']:,.0f} €) dépasse le seuil de franchise en base de TVA "
+            f"({summary['tva_threshold']:,.0f} €). Vous devrez facturer la TVA à partir du "
+            "1er jour du mois de dépassement — consultez un expert-comptable."
+        )
 
     # --- Tableau croisé revenus ---
     st.subheader("Revenus par catégorie et par mois")
