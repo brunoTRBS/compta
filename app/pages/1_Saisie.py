@@ -215,36 +215,44 @@ with tab_transfer:
     if recent_transfers.is_empty():
         st.info("Aucun virement enregistré sur cette période.")
     else:
-        col_list, col_del_transfer = st.columns([3, 1])
-        with col_list:
-            st.dataframe(
-                recent_transfers.select(["date", "label", "from_account", "to_account", "amount"]).rename({
-                    "date": "Date", "label": "Libellé", "from_account": "De",
-                    "to_account": "Vers", "amount": "Montant (€)",
-                }),
-                width='stretch',
-                hide_index=True,
-                column_config={
-                    "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                    "Montant (€)": st.column_config.NumberColumn(format="%.2f €"),
-                },
+        transfers_display = (
+            recent_transfers.select(
+                ["transfer_group_id", "date", "label", "from_account", "to_account", "amount"]
             )
-        with col_del_transfer:
-            transfer_delete_options = {
-                f"{row['date']} — {row['from_account']} → {row['to_account']} — {row['amount']:.2f} €": row["transfer_group_id"]
-                for row in recent_transfers.to_dicts()
-            }
-            del_transfer_label = st.selectbox(
-                "Virement à supprimer", list(transfer_delete_options.keys()), key="del_transfer_select"
-            )
-            if st.button("🗑️ Supprimer ce virement", key="confirm_del_transfer", width='stretch'):
-                try:
-                    delete_transfer(transfer_delete_options[del_transfer_label])
-                    invalidate_cache()
-                    st.toast("Virement supprimé (les 2 écritures liées).", icon="🗑️")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(str(exc))
+            .with_columns(pl.lit(False).alias("Supprimer"))
+        )
+        edited_transfers = st.data_editor(
+            transfers_display,
+            key=f"transfers_table_{transfer_list_year}",
+            width='stretch',
+            hide_index=True,
+            disabled=["transfer_group_id", "date", "label", "from_account", "to_account", "amount"],
+            column_config={
+                "transfer_group_id": None,
+                "date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
+                "label": st.column_config.TextColumn("Libellé"),
+                "from_account": st.column_config.TextColumn("De"),
+                "to_account": st.column_config.TextColumn("Vers"),
+                "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €"),
+                "Supprimer": st.column_config.CheckboxColumn("🗑️ Supprimer"),
+            },
+        )
+        if not isinstance(edited_transfers, pl.DataFrame):
+            edited_transfers = pl.from_pandas(edited_transfers)
+
+        transfers_to_delete = edited_transfers.filter(pl.col("Supprimer"))["transfer_group_id"].to_list()
+        if st.button(
+            f"🗑️ Supprimer le(s) virement(s) coché(s) ({len(transfers_to_delete)})",
+            disabled=not transfers_to_delete,
+        ):
+            try:
+                for transfer_group_id in transfers_to_delete:
+                    delete_transfer(transfer_group_id)
+                invalidate_cache()
+                st.toast(f"{len(transfers_to_delete)} virement(s) supprimé(s).", icon="🗑️")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
 
 # ---------------------------------------------------------------------------
 # Onglet 3 — File des transactions en attente
