@@ -53,9 +53,9 @@ by_owner = group_by_owner(accounts_df)
 
 st.subheader("Vue globale")
 kpi_cols = st.columns(1 + len(by_owner))
-kpi_cols[0].metric("Patrimoine net total", f"{net_worth:,.0f} €")
+kpi_cols[0].metric("Patrimoine net total", f"{net_worth:,.2f} €")
 for i, (owner, total) in enumerate(by_owner.items(), start=1):
-    kpi_cols[i].metric(_OWNER_LABELS.get(owner, owner), f"{total:,.0f} €")
+    kpi_cols[i].metric(_OWNER_LABELS.get(owner, owner), f"{total:,.2f} €")
 
 st.divider()
 
@@ -76,7 +76,7 @@ with col_left:
             hole=0.4,
         )
         fig_pie.update_traces(
-            texttemplate="%{label}<br>%{value:,.0f} €",
+            texttemplate="%{label}<br>%{value:,.2f} €",
             textposition="outside",
         )
         st.plotly_chart(fig_pie, width='stretch')
@@ -130,7 +130,7 @@ if evolution_df is not None and not evolution_df.is_empty():
         labels={"date": "Date", "total_balance": "Solde total (€)"},
         markers=True,
     )
-    fig_line.update_layout(yaxis_tickformat=",.0f")
+    fig_line.update_layout(yaxis_tickformat=",.2f")
     st.plotly_chart(fig_line, width='stretch')
 else:
     st.info(

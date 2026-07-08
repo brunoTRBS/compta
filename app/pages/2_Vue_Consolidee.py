@@ -63,15 +63,15 @@ total_expenses = sum(s["expenses"] for s in summaries.values())
 for col, (label, summary) in zip(cols, summaries.items()):
     with col:
         st.markdown(f"**{label}**")
-        st.metric("Revenus", f"{summary['income']:,.0f} €")
-        st.metric("Dépenses", f"{summary['expenses']:,.0f} €")
-        st.metric("Solde", f"{summary['savings']:,.0f} €")
+        st.metric("Revenus", f"{summary['income']:,.2f} €")
+        st.metric("Dépenses", f"{summary['expenses']:,.2f} €")
+        st.metric("Solde", f"{summary['savings']:,.2f} €")
 
 with cols[-1]:
     st.markdown("**Total**")
-    st.metric("Revenus", f"{total_income:,.0f} €")
-    st.metric("Dépenses", f"{total_expenses:,.0f} €")
-    st.metric("Solde", f"{total_income - total_expenses:,.0f} €")
+    st.metric("Revenus", f"{total_income:,.2f} €")
+    st.metric("Dépenses", f"{total_expenses:,.2f} €")
+    st.metric("Solde", f"{total_income - total_expenses:,.2f} €")
 
 st.divider()
 

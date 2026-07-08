@@ -207,13 +207,13 @@ def _render_global_view(business_id: BusinessId) -> None:
     summary = compute_ytd_summary(df, business_id, date_from.year)
     if summary["is_above_threshold"] and period_type == "Année complète":
         st.warning(
-            f"⚠️ CA ({summary['ca']:,.0f} €) dépasse le seuil micro-entreprise "
-            f"({summary['ca_threshold']:,.0f} €). Consultez un expert-comptable."
+            f"⚠️ CA ({summary['ca']:,.2f} €) dépasse le seuil micro-entreprise "
+            f"({summary['ca_threshold']:,.2f} €). Consultez un expert-comptable."
         )
     elif summary["is_above_tva_threshold"] and period_type == "Année complète":
         st.warning(
-            f"⚠️ CA ({summary['ca']:,.0f} €) dépasse le seuil de franchise en base de TVA "
-            f"({summary['tva_threshold']:,.0f} €). Vous devrez facturer la TVA à partir du "
+            f"⚠️ CA ({summary['ca']:,.2f} €) dépasse le seuil de franchise en base de TVA "
+            f"({summary['tva_threshold']:,.2f} €). Vous devrez facturer la TVA à partir du "
             "1er jour du mois de dépassement — consultez un expert-comptable."
         )
 
