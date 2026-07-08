@@ -219,30 +219,55 @@ with tab_edit:
 
         display_cols = [c for c in ["id", "date", "label", "amount", "category", "notes"]
                         if c in df_edit.columns]
-        display_df = df_edit.select(display_cols)
 
-        edited = st.data_editor(
-            display_df,
-            key=f"editor_{edit_biz_id}_{edit_year}",
-            width='stretch',
-            hide_index=True,
-            disabled=["id"],
-            column_config={
-                "id": None,
-                "date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
-                "label": st.column_config.TextColumn("Libellé", width="large"),
-                "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €"),
-                "category": st.column_config.SelectboxColumn(
-                    "Catégorie",
-                    options=_cats_by_biz.get(edit_biz_id, _all_category_names),
-                    required=False,
-                ),
-                "notes": st.column_config.TextColumn("Notes"),
-            },
-        )
+        def _editable_direction_table(direction_df: pl.DataFrame, direction: str, editor_key: str) -> pl.DataFrame:
+            """Éditeur pour un seul sens ; montant affiché en positif, re-signé au retour."""
+            if direction_df.is_empty():
+                st.info(
+                    "Aucun revenu sur cette période." if direction == "income"
+                    else "Aucune dépense sur cette période."
+                )
+                return direction_df.select(display_cols)
 
-        if not isinstance(edited, pl.DataFrame):
-            edited = pl.from_pandas(edited)
+            display_df = direction_df.select(display_cols).with_columns(pl.col("amount").abs())
+            cats = _cats_by_biz_dir.get((edit_biz_id, direction)) or _cats_by_biz.get(
+                edit_biz_id, _all_category_names
+            )
+
+            edited_dir = st.data_editor(
+                display_df,
+                key=editor_key,
+                width='stretch',
+                hide_index=True,
+                disabled=["id"],
+                column_config={
+                    "id": None,
+                    "date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
+                    "label": st.column_config.TextColumn("Libellé", width="large"),
+                    "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €"),
+                    "category": st.column_config.SelectboxColumn(
+                        "Catégorie", options=cats, required=False,
+                    ),
+                    "notes": st.column_config.TextColumn("Notes"),
+                },
+            )
+            if not isinstance(edited_dir, pl.DataFrame):
+                edited_dir = pl.from_pandas(edited_dir)
+
+            sign = 1.0 if direction == "income" else -1.0
+            return edited_dir.with_columns((pl.col("amount").abs() * sign).alias("amount"))
+
+        tab_income_e, tab_expense_e = st.tabs(["↑ Revenus", "↓ Dépenses"])
+        with tab_income_e:
+            edited_income = _editable_direction_table(
+                df_edit.filter(pl.col("amount") > 0), "income", f"editor_income_{edit_biz_id}_{edit_year}"
+            )
+        with tab_expense_e:
+            edited_expense = _editable_direction_table(
+                df_edit.filter(pl.col("amount") < 0), "expense", f"editor_expense_{edit_biz_id}_{edit_year}"
+            )
+
+        edited = pl.concat([edited_income, edited_expense], how="diagonal_relaxed")
 
         col_save, col_del, col_reset = st.columns([2, 1, 1])
 
@@ -278,18 +303,24 @@ with tab_edit:
         with col_del:
             st.write("")
             with st.expander("🗑️ Supprimer"):
-                del_id = st.text_input("ID à supprimer", key="del_id", placeholder="uuid...")
+                del_options = {
+                    f"{'↑' if row['amount'] > 0 else '↓'} {row['date']} — {row['label']} — "
+                    f"{abs(row['amount']):.2f} €": row["id"]
+                    for row in df_edit.sort("date", descending=True).to_dicts()
+                }
+                del_label = st.selectbox(
+                    "Transaction à supprimer", list(del_options.keys()), key="del_select"
+                )
                 if st.button("Confirmer la suppression", key="confirm_del", type="secondary"):
-                    if del_id.strip():
-                        try:
-                            delete_transaction(del_id.strip())
-                            invalidate_cache()
-                            if origin_key in st.session_state:
-                                del st.session_state[origin_key]
-                            st.toast("Transaction supprimée.", icon="🗑️")
-                            st.rerun()
-                        except Exception as exc:
-                            st.error(str(exc))
+                    try:
+                        delete_transaction(del_options[del_label])
+                        invalidate_cache()
+                        if origin_key in st.session_state:
+                            del st.session_state[origin_key]
+                        st.toast("Transaction supprimée.", icon="🗑️")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
 
         with col_reset:
             st.write("")

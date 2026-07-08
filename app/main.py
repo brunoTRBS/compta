@@ -33,11 +33,11 @@ Utilisez le menu de navigation à gauche pour accéder aux modules :
 
 | # | Module | Description |
 |---|--------|-------------|
-| 1 | **Phi Rising** | CA, cotisations URSSAF, marge nette — Coaching & Formation |
-| 2 | **Booth in Lyon** | CA, cotisations URSSAF, marge nette — Location Photobooth |
-| 3 | **Budget Perso** | Dépenses par catégorie, taux d'épargne, catégorisation |
-| 4 | **Patrimoine** | Bilan des comptes et évolution patrimoniale |
-| 5 | **Saisie** | Ajout manuel, file d'attente, correction de transactions |
+| 1 | **Saisie** | Ajout manuel, file d'attente, correction de transactions |
+| 2 | **Phi Rising** | CA, cotisations URSSAF, marge nette — Coaching & Formation |
+| 3 | **Booth in Lyon** | CA, cotisations URSSAF, marge nette — Location Photobooth |
+| 4 | **Budget Perso** | Revenus et dépenses par catégorie, taux d'épargne, catégorisation |
+| 5 | **Patrimoine** | Bilan des comptes et évolution patrimoniale |
 | 6 | **Sync** | Import automatique GoCardless & Stripe |
 | 7 | **Paramètres** | Statut des connexions, gestion du cache |
 """)

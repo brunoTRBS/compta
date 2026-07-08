@@ -114,16 +114,14 @@ with col_chart:
         st.info("Aucune dépense catégorisée sur la période.")
 
 with col_table:
-    st.subheader("Dépenses du mois")
-    available_expense_cols = [c for c in ["date", "label", "amount", "category", "note"] if c in df.columns]
-    expenses_df = (
-        df.filter(pl.col("amount") < 0)
-        .select(available_expense_cols)
-        .sort("date", descending=True)
-    )
-    if not expenses_df.is_empty():
+    available_cols = [c for c in ["date", "label", "amount", "category", "note"] if c in df.columns]
+
+    def _show_movements(direction_df: pl.DataFrame, empty_message: str) -> None:
+        if direction_df.is_empty():
+            st.info(empty_message)
+            return
         st.dataframe(
-            expenses_df,
+            direction_df.select(available_cols).with_columns(pl.col("amount").abs()),
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -134,5 +132,15 @@ with col_table:
                 "note": st.column_config.TextColumn("Note"),
             },
         )
-    else:
-        st.info("Aucune dépense sur la période.")
+
+    tab_expenses, tab_income = st.tabs(["↓ Dépenses du mois", "↑ Revenus du mois"])
+    with tab_expenses:
+        _show_movements(
+            df.filter(pl.col("amount") < 0).sort("date", descending=True),
+            "Aucune dépense sur la période.",
+        )
+    with tab_income:
+        _show_movements(
+            df.filter(pl.col("amount") > 0).sort("date", descending=True),
+            "Aucun revenu sur la période.",
+        )
