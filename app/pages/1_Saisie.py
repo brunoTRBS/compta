@@ -7,10 +7,12 @@ import streamlit as st
 
 from src.config import BusinessId, TransactionSource
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
+from src.logic.consolidated import pair_transfers
 from src.services.db_reader import invalidate_cache, read_accounts, read_categories, read_transactions
 from src.services.supabase import (
     bulk_update_categories,
     delete_transaction,
+    delete_transfer,
     fetch_categorization_rules,
     insert_transaction,
     insert_transfer,
@@ -194,25 +196,73 @@ with tab_transfer:
                 except Exception as exc:
                     st.error(f"Erreur lors de l'enregistrement : {exc}")
 
+    st.divider()
+    st.subheader("Virements récents")
+
+    transfer_list_year = st.selectbox(
+        "Année", [date.today().year, date.today().year - 1], key="transfer_list_year"
+    )
+    try:
+        transfer_year_df = read_transactions(year=transfer_list_year, include_transfers=True)
+    except Exception as exc:
+        st.error(f"Impossible de charger les virements : {exc}")
+        transfer_year_df = pl.DataFrame()
+
+    recent_transfers = (
+        pair_transfers(transfer_year_df, _accounts_df) if not transfer_year_df.is_empty() else pl.DataFrame()
+    )
+
+    if recent_transfers.is_empty():
+        st.info("Aucun virement enregistré sur cette période.")
+    else:
+        col_list, col_del_transfer = st.columns([3, 1])
+        with col_list:
+            st.dataframe(
+                recent_transfers.select(["date", "label", "from_account", "to_account", "amount"]).rename({
+                    "date": "Date", "label": "Libellé", "from_account": "De",
+                    "to_account": "Vers", "amount": "Montant (€)",
+                }),
+                width='stretch',
+                hide_index=True,
+                column_config={
+                    "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                    "Montant (€)": st.column_config.NumberColumn(format="%.2f €"),
+                },
+            )
+        with col_del_transfer:
+            transfer_delete_options = {
+                f"{row['date']} — {row['from_account']} → {row['to_account']} — {row['amount']:.2f} €": row["transfer_group_id"]
+                for row in recent_transfers.to_dicts()
+            }
+            del_transfer_label = st.selectbox(
+                "Virement à supprimer", list(transfer_delete_options.keys()), key="del_transfer_select"
+            )
+            if st.button("🗑️ Supprimer ce virement", key="confirm_del_transfer", width='stretch'):
+                try:
+                    delete_transfer(transfer_delete_options[del_transfer_label])
+                    invalidate_cache()
+                    st.toast("Virement supprimé (les 2 écritures liées).", icon="🗑️")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
 # ---------------------------------------------------------------------------
 # Onglet 3 — File des transactions en attente
 # ---------------------------------------------------------------------------
 with tab_pending:
     st.subheader("Transactions sans catégorie")
 
-    # Sélecteur d'activité pour limiter le volume
-    with st.sidebar:
-        st.subheader("Filtres — En attente")
-        pending_biz_label = st.selectbox(
-            "Activité",
-            ["Toutes"] + list(_BUSINESS_LABELS.keys()),
-            key="pending_biz",
-        )
-        pending_year = st.selectbox(
-            "Année",
-            [date.today().year, date.today().year - 1],
-            key="pending_year",
-        )
+    col_biz_p, col_year_p = st.columns(2)
+    pending_biz_label = col_biz_p.selectbox(
+        "Activité",
+        ["Toutes"] + list(_BUSINESS_LABELS.keys()),
+        key="pending_biz",
+    )
+    pending_year = col_year_p.selectbox(
+        "Année",
+        [date.today().year, date.today().year - 1],
+        key="pending_year",
+    )
 
     pending_biz_id = _BUSINESS_LABELS.get(pending_biz_label)
 
@@ -273,18 +323,17 @@ with tab_edit:
     st.subheader("Éditer des transactions existantes")
     st.caption("Modifiez le libellé, le montant, la date ou la catégorie directement dans le tableau.")
 
-    with st.sidebar:
-        st.subheader("Filtres — Correction")
-        edit_biz_label = st.selectbox(
-            "Activité",
-            list(_BUSINESS_LABELS.keys()),
-            key="edit_biz",
-        )
-        edit_year = st.selectbox(
-            "Année",
-            [date.today().year, date.today().year - 1],
-            key="edit_year",
-        )
+    col_biz_e, col_year_e = st.columns(2)
+    edit_biz_label = col_biz_e.selectbox(
+        "Activité",
+        list(_BUSINESS_LABELS.keys()),
+        key="edit_biz",
+    )
+    edit_year = col_year_e.selectbox(
+        "Année",
+        [date.today().year, date.today().year - 1],
+        key="edit_year",
+    )
 
     edit_biz_id = _BUSINESS_LABELS[edit_biz_label]
 

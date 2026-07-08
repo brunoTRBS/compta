@@ -234,3 +234,22 @@ class TestInsertTransfer:
         to_row = next(r for r in rows if r["account_id"] == "acc-perso")
         assert from_row["business_id"] == "booth_in_lyon"
         assert to_row["business_id"] == "personal"
+
+
+# ---------------------------------------------------------------------------
+# delete_transfer
+# ---------------------------------------------------------------------------
+
+class TestDeleteTransfer:
+    @patch("src.services.supabase.get_supabase")
+    def test_deletes_by_transfer_group_id(self, mock_get):
+        mock_client = _make_supabase_mock([])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import delete_transfer
+        delete_transfer("tg-123")
+
+        mock_client.table.assert_called_with("transactions")
+        mock_client.table.return_value.delete.return_value.eq.assert_called_with(
+            "transfer_group_id", "tg-123"
+        )

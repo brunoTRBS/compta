@@ -164,7 +164,7 @@ with col_transfers:
         st.info("Aucun virement enregistré sur cette période.")
     else:
         st.dataframe(
-            transfers.rename({
+            transfers.select(["date", "label", "from_account", "to_account", "amount"]).rename({
                 "date": "Date", "label": "Libellé", "from_account": "De",
                 "to_account": "Vers", "amount": "Montant (€)",
             }),

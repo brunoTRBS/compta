@@ -66,6 +66,10 @@ class TestPairTransfers:
         result = pair_transfers(sample_transactions, sample_accounts)
         assert result.shape[0] == 1
 
+    def test_keeps_transfer_group_id_for_deletion(self, sample_accounts, sample_transactions):
+        result = pair_transfers(sample_transactions, sample_accounts)
+        assert result["transfer_group_id"][0] == "tg-1"
+
     def test_resolves_account_names(self, sample_accounts, sample_transactions):
         result = pair_transfers(sample_transactions, sample_accounts)
         row = result.row(0, named=True)

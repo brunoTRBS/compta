@@ -41,8 +41,9 @@ def pair_transfers(tx_df: pl.DataFrame, accounts_df: pl.DataFrame) -> pl.DataFra
         accounts_df: comptes actifs, pour résoudre account_id → nom lisible.
 
     Returns:
-        Un DataFrame : date, label, from_account, to_account, amount (positif).
-        Vide si aucun virement sur la période.
+        Un DataFrame : transfer_group_id, date, label, from_account, to_account, amount
+        (positif). transfer_group_id est conservé pour permettre la suppression du
+        virement (les 2 écritures partagent le même). Vide si aucun virement sur la période.
     """
     transfers = tx_df.filter(pl.col("is_transfer"))
     if transfers.is_empty():
@@ -75,6 +76,6 @@ def pair_transfers(tx_df: pl.DataFrame, accounts_df: pl.DataFrame) -> pl.DataFra
         .join(names.rename({"id": "to_account_id", "name": "to_account"}), on="to_account_id", how="left")
     )
 
-    return paired.select(["date", "label", "from_account", "to_account", "amount"]).sort(
-        "date", descending=True
-    )
+    return paired.select(
+        ["transfer_group_id", "date", "label", "from_account", "to_account", "amount"]
+    ).sort("date", descending=True)
