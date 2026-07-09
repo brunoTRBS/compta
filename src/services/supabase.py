@@ -195,6 +195,28 @@ def update_account_balance(account_id: str, balance: float) -> dict[str, Any]:
     return {"account_id": account_id, "balance": balance}
 
 
+def delete_balance_snapshot(account_id: str, snapshot_id: str) -> None:
+    """Supprime un point de l'historique des soldes d'un compte (erreur de saisie).
+
+    Si le point supprimé était le plus récent, le solde courant du compte
+    (accounts.balance) est ramené au point restant le plus récent (0 s'il n'en reste aucun).
+    """
+    client = get_supabase()
+    client.table("account_balance_history").delete().eq("id", snapshot_id).execute()
+
+    remaining = (
+        client.table("account_balance_history")
+        .select("balance")
+        .eq("account_id", account_id)
+        .order("date", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    new_balance = remaining[0]["balance"] if remaining else 0
+    client.table("accounts").update({"balance": new_balance}).eq("id", account_id).execute()
+
+
 # ---------------------------------------------------------------------------
 # Categorization rules
 # ---------------------------------------------------------------------------

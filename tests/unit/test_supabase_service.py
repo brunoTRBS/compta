@@ -253,3 +253,61 @@ class TestDeleteTransfer:
         mock_client.table.return_value.delete.return_value.eq.assert_called_with(
             "transfer_group_id", "tg-123"
         )
+
+
+# ---------------------------------------------------------------------------
+# delete_balance_snapshot
+# ---------------------------------------------------------------------------
+
+def _make_balance_snapshot_mock(remaining_data: list) -> MagicMock:
+    """Mock dédié : delete().eq().execute() puis select().eq().order().limit().execute()."""
+    mock = MagicMock()
+    delete_execute = MagicMock()
+    delete_execute.data = []
+    mock.table.return_value.delete.return_value.eq.return_value.execute.return_value = delete_execute
+
+    select_execute = MagicMock()
+    select_execute.data = remaining_data
+    (
+        mock.table.return_value.select.return_value.eq.return_value
+        .order.return_value.limit.return_value.execute.return_value
+    ) = select_execute
+
+    update_execute = MagicMock()
+    update_execute.data = []
+    mock.table.return_value.update.return_value.eq.return_value.execute.return_value = update_execute
+
+    return mock
+
+
+class TestDeleteBalanceSnapshot:
+    @patch("src.services.supabase.get_supabase")
+    def test_deletes_the_snapshot_row(self, mock_get):
+        mock_client = _make_balance_snapshot_mock([{"balance": 100.0}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import delete_balance_snapshot
+        delete_balance_snapshot("acc-1", "snap-1")
+
+        mock_client.table.return_value.delete.return_value.eq.assert_called_with("id", "snap-1")
+
+    @patch("src.services.supabase.get_supabase")
+    def test_resets_balance_to_remaining_latest_snapshot(self, mock_get):
+        mock_client = _make_balance_snapshot_mock([{"balance": 850.0}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import delete_balance_snapshot
+        delete_balance_snapshot("acc-1", "snap-1")
+
+        mock_client.table.return_value.update.assert_called_with({"balance": 850.0})
+        mock_client.table.return_value.update.return_value.eq.assert_called_with("id", "acc-1")
+
+    @patch("src.services.supabase.get_supabase")
+    def test_resets_balance_to_zero_when_no_snapshot_remains(self, mock_get):
+        mock_client = _make_balance_snapshot_mock([])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import delete_balance_snapshot
+        delete_balance_snapshot("acc-1", "snap-1")
+
+        mock_client.table.return_value.update.assert_called_with({"balance": 0})

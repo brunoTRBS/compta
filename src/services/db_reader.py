@@ -101,18 +101,18 @@ def read_accounts(owner: str | None = None) -> pl.DataFrame:
 
 @st.cache_data(ttl=_CACHE_TTL)
 def read_account_balance_history(account_id: str) -> pl.DataFrame:
-    """Lit l'historique des soldes d'un compte pour les courbes d'évolution."""
+    """Lit l'historique des soldes d'un compte (le plus récent en premier)."""
     data = (
         get_supabase()
         .table("account_balance_history")
-        .select("date,balance")
+        .select("id,date,balance")
         .eq("account_id", account_id)
-        .order("date")
+        .order("date", desc=True)
         .execute()
         .data
     )
     if not data:
-        return pl.DataFrame(schema={"date": pl.Date, "balance": pl.Float64})
+        return pl.DataFrame(schema={"id": pl.Utf8, "date": pl.Date, "balance": pl.Float64})
     return pl.DataFrame(data).with_columns(
         pl.col("date").cast(pl.Date),
         pl.col("balance").cast(pl.Float64),

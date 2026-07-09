@@ -1,6 +1,7 @@
 """Page Bilan Patrimonial — soldes, évolution, mise à jour manuelle."""
 
 import plotly.express as px
+import polars as pl
 import streamlit as st
 from datetime import date
 
@@ -12,10 +13,11 @@ from src.logic.patrimoine import (
 )
 from src.services.db_reader import (
     invalidate_cache,
+    read_account_balance_history,
     read_accounts,
     read_patrimoine_evolution,
 )
-from src.services.supabase import fetch_accounts, update_account_balance
+from src.services.supabase import delete_balance_snapshot, fetch_accounts, update_account_balance
 from app.components.auth import require_auth
 
 st.set_page_config(page_title="Patrimoine", page_icon="🏦", layout="wide")
@@ -86,8 +88,6 @@ with col_left:
 with col_right:
     st.subheader("Détail des comptes")
     if not accounts_df.is_empty():
-        import polars as pl
-
         display_df = (
             accounts_df.select(["name", "institution", "type", "owner", "currency", "balance"])
             .with_columns(
@@ -175,3 +175,64 @@ else:
             st.rerun()
         except Exception as exc:
             st.error(f"Erreur lors de la mise à jour : {exc}")
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Historique des soldes — corriger une erreur de saisie
+# ---------------------------------------------------------------------------
+st.subheader("Historique des soldes")
+st.caption(
+    "En cas d'erreur de saisie : coche un point puis supprime-le. Le solde courant "
+    "du compte est automatiquement recalculé à partir du point restant le plus récent."
+)
+
+if not accounts_raw:
+    st.info("Aucun compte disponible.")
+else:
+    history_account_label = st.selectbox(
+        "Compte", list(account_options.keys()), key="history_account"
+    )
+    history_account_id = account_options[history_account_label]
+
+    try:
+        history_df = read_account_balance_history(history_account_id)
+    except Exception as exc:
+        st.error(f"Impossible de charger l'historique : {exc}")
+        history_df = pl.DataFrame()
+
+    if history_df.is_empty():
+        st.info("Aucun solde enregistré pour ce compte pour le moment.")
+    else:
+        display_history = history_df.select(["id", "date", "balance"]).with_columns(
+            pl.lit(False).alias("Supprimer")
+        )
+        edited_history = st.data_editor(
+            display_history,
+            key=f"history_editor_{history_account_id}",
+            width='stretch',
+            hide_index=True,
+            disabled=["id", "date", "balance"],
+            column_config={
+                "id": None,
+                "date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
+                "balance": st.column_config.NumberColumn("Solde (€)", format="%.2f €"),
+                "Supprimer": st.column_config.CheckboxColumn("🗑️ Supprimer"),
+            },
+        )
+        if not isinstance(edited_history, pl.DataFrame):
+            edited_history = pl.from_pandas(edited_history)
+
+        snapshots_to_delete = edited_history.filter(pl.col("Supprimer"))["id"].to_list()
+        if st.button(
+            f"🗑️ Supprimer le(s) point(s) coché(s) ({len(snapshots_to_delete)})",
+            disabled=not snapshots_to_delete,
+        ):
+            try:
+                for snapshot_id in snapshots_to_delete:
+                    delete_balance_snapshot(history_account_id, snapshot_id)
+                invalidate_cache()
+                st.toast(f"{len(snapshots_to_delete)} point(s) supprimé(s).", icon="🗑️")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))

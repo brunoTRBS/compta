@@ -153,6 +153,37 @@ class TestReadAccounts:
 
 
 # ---------------------------------------------------------------------------
+# read_account_balance_history
+# ---------------------------------------------------------------------------
+
+class TestReadAccountBalanceHistory:
+    def test_returns_dataframe_with_id(self):
+        rows = [{"id": "snap-1", "date": "2025-05-31", "balance": 1230.10}]
+        client = _chain_mock(rows)
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            result = db_reader.read_account_balance_history("acc-1")
+            assert isinstance(result, pl.DataFrame)
+            assert "id" in result.columns
+            assert result["id"][0] == "snap-1"
+
+    def test_account_id_filter_applied(self):
+        client = _chain_mock([])
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            db_reader.read_account_balance_history("acc-1")
+            client.eq.assert_any_call("account_id", "acc-1")
+
+    def test_empty_returns_typed_schema(self):
+        client = _chain_mock([])
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            result = db_reader.read_account_balance_history("acc-1")
+            assert result.shape[0] == 0
+            assert set(result.columns) == {"id", "date", "balance"}
+
+
+# ---------------------------------------------------------------------------
 # read_monthly_revenue
 # ---------------------------------------------------------------------------
 
