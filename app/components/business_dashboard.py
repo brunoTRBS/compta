@@ -19,6 +19,7 @@ from src.logic.revenue import (
 from src.services.db_reader import invalidate_cache, read_categories, read_transactions
 from src.services.supabase import bulk_update_categories
 
+from app.components.quick_entry import render_quick_entry_form
 from app.components.transaction_table import render_transaction_table
 
 _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
@@ -273,6 +274,8 @@ def _show_pivot(pivot: pl.DataFrame) -> None:
 # ---------------------------------------------------------------------------
 
 def _render_transactions(business_id: BusinessId) -> None:
+    render_quick_entry_form(str(business_id), key_prefix=f"tx_{business_id}")
+
     today = date.today()
     current_year = today.year
 

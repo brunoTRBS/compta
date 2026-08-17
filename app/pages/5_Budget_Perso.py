@@ -15,11 +15,14 @@ from src.logic.budget import breakdown_by_category, compute_budget_summary, comp
 from src.logic.consolidated import personal_income_from_transfers
 from src.logic.revenue import monthly_benefice
 from app.components.auth import require_auth
+from app.components.quick_entry import render_quick_entry_form
 from src.services.db_reader import read_accounts, read_transactions
 
 st.set_page_config(page_title="Budget Perso", page_icon="💰", layout="wide")
 require_auth()
 st.title("Budget Personnel")
+
+render_quick_entry_form(str(BusinessId.PERSONAL), key_prefix="budget_perso")
 
 _MONTH_LABELS = {
     1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Jun",
