@@ -218,6 +218,58 @@ def delete_balance_snapshot(account_id: str, snapshot_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Transactions récurrentes
+# ---------------------------------------------------------------------------
+
+def insert_recurring_transaction(payload: dict[str, Any]) -> dict[str, Any]:
+    """Crée un modèle de transaction récurrente."""
+    result = get_supabase().table("recurring_transactions").insert(payload).execute()
+    return result.data[0]
+
+
+def update_recurring_transaction(recurring_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+    """Met à jour des champs arbitraires d'un modèle récurrent (ex : is_active)."""
+    result = (
+        get_supabase()
+        .table("recurring_transactions")
+        .update(updates)
+        .eq("id", recurring_id)
+        .execute()
+    )
+    return result.data[0]
+
+
+def delete_recurring_transaction(recurring_id: str) -> None:
+    """Supprime définitivement un modèle de transaction récurrente."""
+    get_supabase().table("recurring_transactions").delete().eq("id", recurring_id).execute()
+
+
+def materialize_recurring_transactions(
+    materializations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Crée les transactions réelles pour une liste de modèles validés et marque
+    chaque modèle comme matérialisé pour ce mois.
+
+    Args:
+        materializations: liste de {recurring_id, transaction, year, month} où
+            `transaction` est le payload prêt pour la table transactions.
+
+    Returns:
+        Les transactions créées.
+    """
+    client = get_supabase()
+    created: list[dict[str, Any]] = []
+    for item in materializations:
+        result = client.table("transactions").insert(item["transaction"]).execute()
+        created.append(result.data[0])
+        client.table("recurring_transactions").update({
+            "last_materialized_year": item["year"],
+            "last_materialized_month": item["month"],
+        }).eq("id", item["recurring_id"]).execute()
+    return created
+
+
+# ---------------------------------------------------------------------------
 # Categorization rules
 # ---------------------------------------------------------------------------
 

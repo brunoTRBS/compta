@@ -243,6 +243,35 @@ def read_categories(business_id: str | None = None) -> pl.DataFrame:
     return pl.DataFrame(data)
 
 
+@st.cache_data(ttl=_CACHE_TTL)
+def read_recurring_transactions() -> pl.DataFrame:
+    """Lit les modèles de transactions récurrentes (actifs et inactifs)."""
+    data = (
+        get_supabase()
+        .table("recurring_transactions")
+        .select("id,label,amount,category,business_id,account_id,day_of_month,"
+                "is_active,last_materialized_year,last_materialized_month,notes")
+        .order("day_of_month")
+        .execute()
+        .data
+    )
+    _SCHEMA: dict[str, type[pl.DataType]] = {
+        "id": pl.Utf8, "label": pl.Utf8, "amount": pl.Float64, "category": pl.Utf8,
+        "business_id": pl.Utf8, "account_id": pl.Utf8, "day_of_month": pl.Int32,
+        "is_active": pl.Boolean, "last_materialized_year": pl.Int32,
+        "last_materialized_month": pl.Int32, "notes": pl.Utf8,
+    }
+    if not data:
+        return pl.DataFrame(schema=_SCHEMA)
+    return pl.DataFrame(data).with_columns(
+        pl.col("amount").cast(pl.Float64),
+        pl.col("day_of_month").cast(pl.Int32),
+        pl.col("is_active").cast(pl.Boolean),
+        pl.col("last_materialized_year").cast(pl.Int32),
+        pl.col("last_materialized_month").cast(pl.Int32),
+    )
+
+
 def invalidate_cache() -> None:
     """Vide le cache Streamlit pour forcer un rechargement depuis la DB."""
     st.cache_data.clear()

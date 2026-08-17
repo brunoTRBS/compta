@@ -311,3 +311,83 @@ class TestDeleteBalanceSnapshot:
         delete_balance_snapshot("acc-1", "snap-1")
 
         mock_client.table.return_value.update.assert_called_with({"balance": 0})
+
+
+# ---------------------------------------------------------------------------
+# Transactions récurrentes
+# ---------------------------------------------------------------------------
+
+class TestInsertRecurringTransaction:
+    @patch("src.services.supabase.get_supabase")
+    def test_returns_created_row(self, mock_get):
+        row = {"label": "Loyer", "amount": -800.0, "business_id": "personal", "day_of_month": 5}
+        created = {**row, "id": "rec-1"}
+        mock_get.return_value = _make_supabase_mock([created])
+
+        from src.services.supabase import insert_recurring_transaction
+        result = insert_recurring_transaction(row)
+        assert result["id"] == "rec-1"
+
+
+class TestUpdateRecurringTransaction:
+    @patch("src.services.supabase.get_supabase")
+    def test_updates_given_fields(self, mock_get):
+        mock_client = _make_supabase_mock([{"id": "rec-1", "is_active": False}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import update_recurring_transaction
+        update_recurring_transaction("rec-1", {"is_active": False})
+
+        mock_client.table.return_value.update.assert_called_once_with({"is_active": False})
+        mock_client.table.return_value.update.return_value.eq.assert_called_with("id", "rec-1")
+
+
+class TestDeleteRecurringTransaction:
+    @patch("src.services.supabase.get_supabase")
+    def test_deletes_by_id(self, mock_get):
+        mock_client = _make_supabase_mock([])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import delete_recurring_transaction
+        delete_recurring_transaction("rec-1")
+
+        mock_client.table.return_value.delete.return_value.eq.assert_called_with("id", "rec-1")
+
+
+class TestMaterializeRecurringTransactions:
+    @patch("src.services.supabase.get_supabase")
+    def test_inserts_transaction_and_marks_materialized(self, mock_get):
+        mock_client = _make_supabase_mock([{"id": "tx-1"}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import materialize_recurring_transactions
+        created = materialize_recurring_transactions([
+            {
+                "recurring_id": "rec-1",
+                "year": 2026,
+                "month": 7,
+                "transaction": {"date": "2026-07-05", "amount": -800.0, "label": "Loyer"},
+            }
+        ])
+
+        assert len(created) == 1
+        mock_client.table.return_value.insert.assert_called_with(
+            {"date": "2026-07-05", "amount": -800.0, "label": "Loyer"}
+        )
+        mock_client.table.return_value.update.assert_called_with(
+            {"last_materialized_year": 2026, "last_materialized_month": 7}
+        )
+        mock_client.table.return_value.update.return_value.eq.assert_called_with("id", "rec-1")
+
+    @patch("src.services.supabase.get_supabase")
+    def test_handles_multiple_items(self, mock_get):
+        mock_client = _make_supabase_mock([{"id": "tx-1"}])
+        mock_get.return_value = mock_client
+
+        from src.services.supabase import materialize_recurring_transactions
+        created = materialize_recurring_transactions([
+            {"recurring_id": "rec-1", "year": 2026, "month": 7, "transaction": {"amount": -10.0}},
+            {"recurring_id": "rec-2", "year": 2026, "month": 7, "transaction": {"amount": 2000.0}},
+        ])
+
+        assert len(created) == 2

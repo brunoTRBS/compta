@@ -184,6 +184,36 @@ class TestReadAccountBalanceHistory:
 
 
 # ---------------------------------------------------------------------------
+# read_recurring_transactions
+# ---------------------------------------------------------------------------
+
+class TestReadRecurringTransactions:
+    def test_returns_dataframe(self):
+        rows = [{
+            "id": "rec-1", "label": "Loyer", "amount": -800.0, "category": "rent",
+            "business_id": "personal", "account_id": "acc-1", "day_of_month": 5,
+            "is_active": True, "last_materialized_year": None,
+            "last_materialized_month": None, "notes": None,
+        }]
+        client = _chain_mock(rows)
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            result = db_reader.read_recurring_transactions()
+            assert isinstance(result, pl.DataFrame)
+            assert result.shape[0] == 1
+            assert result["amount"][0] == -800.0
+
+    def test_empty_returns_typed_schema(self):
+        client = _chain_mock([])
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            result = db_reader.read_recurring_transactions()
+            assert result.shape[0] == 0
+            assert result.schema["amount"] == pl.Float64
+            assert result.schema["is_active"] == pl.Boolean
+
+
+# ---------------------------------------------------------------------------
 # read_monthly_revenue
 # ---------------------------------------------------------------------------
 
