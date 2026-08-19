@@ -159,6 +159,10 @@ def _render_editable_direction(
     if pending_key not in st.session_state:
         st.session_state[pending_key] = []
 
+    undo_key = f"{key}_undo_snapshot"
+    if undo_key not in st.session_state:
+        st.session_state[undo_key] = []
+
     # Le data_editor mémorise ses propres modifications (ajouts/suppressions) sous
     # sa clé, indépendamment des données qu'on lui repasse à chaque rerun. Un
     # numéro de version dans la clé force un widget entièrement neuf après chaque
@@ -224,18 +228,42 @@ def _render_editable_direction(
     if not isinstance(edited, pl.DataFrame):
         edited = pl.from_pandas(edited)
 
-    # La suppression est immédiate (case cochée = transaction supprimée tout de
-    # suite), pas différée jusqu'au bouton "Enregistrer" : ça évite de dépendre
-    # du suivi par position du data_editor (fragile dès que les lignes bougent,
-    # ex. ajout d'une nouvelle ligne) pour une action destructive.
+    # La suppression n'a lieu que si la case ET le bouton sont utilisés — pas la
+    # case seule — pour éviter une suppression accidentelle en un clic. Elle est
+    # immédiate (pas différée jusqu'à "Enregistrer") pour ne pas dépendre du
+    # suivi par position du data_editor, fragile dès que les lignes bougent
+    # (ex. ajout d'une nouvelle ligne) pour une action destructive.
     to_delete_now = [
         row["id"] for row in edited.iter_rows(named=True)
         if row.get("id") and row.get("Supprimer")
     ]
-    if to_delete_now:
+    delete_label = (
+        f"🗑️ Supprimer la sélection ({len(to_delete_now)})"
+        if to_delete_now else "🗑️ Supprimer la sélection"
+    )
+    col_delete, col_undo = st.columns(2)
+    with col_delete:
+        confirm_delete = st.button(
+            delete_label,
+            key=f"{key}_confirm_delete",
+            disabled=not to_delete_now,
+            width='stretch',
+        )
+    with col_undo:
+        undo_delete = st.button(
+            f"↩️ Annuler la suppression ({len(st.session_state[undo_key])})"
+            if st.session_state[undo_key] else "↩️ Annuler la suppression",
+            key=f"{key}_undo_delete",
+            disabled=not st.session_state[undo_key],
+            width='stretch',
+        )
+
+    if confirm_delete and to_delete_now:
         try:
+            snapshot = direction_df.filter(pl.col("id").is_in(to_delete_now)).to_dicts()
             for row_id in to_delete_now:
                 delete_transaction(row_id)
+            st.session_state[undo_key] = snapshot
             invalidate_cache()
             del st.session_state[origin_key]
             st.session_state[version_key] += 1
@@ -243,6 +271,24 @@ def _render_editable_direction(
             st.rerun()
         except Exception as exc:
             st.error(f"Erreur lors de la suppression : {exc}")
+        return
+
+    if undo_delete and st.session_state[undo_key]:
+        try:
+            for row in st.session_state[undo_key]:
+                restore_payload = {
+                    k: v for k, v in row.items() if k not in ("id", "created_at", "is_income")
+                }
+                insert_transaction(restore_payload)
+            restored_count = len(st.session_state[undo_key])
+            st.session_state[undo_key] = []
+            invalidate_cache()
+            del st.session_state[origin_key]
+            st.session_state[version_key] += 1
+            st.toast(f"{restored_count} transaction(s) restaurée(s) ✅", icon="✅")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Erreur lors de la restauration : {exc}")
         return
 
     if not st.button("💾 Enregistrer", key=f"{key}_save", width='stretch'):
