@@ -175,6 +175,13 @@ def _render_editable_direction(
         if account_options:
             blank_row["compte"] = None
         st.session_state[pending_key].insert(0, blank_row)
+        # Une nouvelle ligne en tête décale la position de toutes les lignes
+        # existantes. Le data_editor mémorise ses modifications (dont les cases
+        # "Supprimer" cochées) par position sous sa clé : sans ce changement de
+        # version, ces marques se retrouveraient réappliquées aux mauvaises
+        # lignes après le décalage (ex. une suppression en attente semble
+        # "annulée" tandis qu'une autre ligne se coche à sa place).
+        st.session_state[version_key] += 1
 
     display_cols = [c for c in ["id", "date", "label", "amount", "category"] if c in direction_df.columns]
     working = direction_df.select(display_cols).with_columns(pl.col("amount").abs())
@@ -217,6 +224,27 @@ def _render_editable_direction(
     if not isinstance(edited, pl.DataFrame):
         edited = pl.from_pandas(edited)
 
+    # La suppression est immédiate (case cochée = transaction supprimée tout de
+    # suite), pas différée jusqu'au bouton "Enregistrer" : ça évite de dépendre
+    # du suivi par position du data_editor (fragile dès que les lignes bougent,
+    # ex. ajout d'une nouvelle ligne) pour une action destructive.
+    to_delete_now = [
+        row["id"] for row in edited.iter_rows(named=True)
+        if row.get("id") and row.get("Supprimer")
+    ]
+    if to_delete_now:
+        try:
+            for row_id in to_delete_now:
+                delete_transaction(row_id)
+            invalidate_cache()
+            del st.session_state[origin_key]
+            st.session_state[version_key] += 1
+            st.toast(f"{len(to_delete_now)} transaction(s) supprimée(s) ✅", icon="✅")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Erreur lors de la suppression : {exc}")
+        return
+
     if not st.button("💾 Enregistrer", key=f"{key}_save", width='stretch'):
         return
 
@@ -225,7 +253,6 @@ def _render_editable_direction(
 
     new_rows: list[dict] = []
     updates: list[tuple[str, dict]] = []
-    deleted_ids: list[str] = []
 
     for row in edited.iter_rows(named=True):
         row_id = row.get("id")
@@ -247,8 +274,6 @@ def _render_editable_direction(
                 "category": row.get("category"),
                 "notes": None,
             })
-        elif row.get("Supprimer"):
-            deleted_ids.append(row_id)
         else:
             orig = origin_map.get(row_id, {})
             diff: dict = {}
@@ -273,15 +298,12 @@ def _render_editable_direction(
             insert_transaction(payload)
         for row_id, diff in updates:
             update_transaction(row_id, diff)
-        for row_id in deleted_ids:
-            delete_transaction(row_id)
         invalidate_cache()
         del st.session_state[origin_key]
         st.session_state[pending_key] = []
         st.session_state[version_key] += 1
         st.toast(
-            f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s), "
-            f"{len(deleted_ids)} supprimée(s) ✅",
+            f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s) ✅",
             icon="✅",
         )
         st.rerun()
