@@ -1,5 +1,6 @@
 """Composant réutilisable : tableau de transactions éditable."""
 
+from datetime import date
 from typing import Callable
 
 import polars as pl
@@ -111,10 +112,12 @@ def render_editable_transactions(
 ) -> None:
     """Tableau Revenus/Dépenses éditable, avec ajout de ligne directe.
 
-    Une nouvelle ligne s'ajoute via le "+" natif du tableau (num_rows="dynamic") :
-    tu la remplies sur place, puis un seul bouton "Enregistrer" par tableau
-    persiste tout — nouvelles lignes (insert), lignes modifiées (update) et
-    lignes retirées via le "−" natif (delete).
+    Une ligne vide reste toujours présente en tête du tableau (le plus récent
+    étant affiché en premier) : la remplir puis cliquer "Enregistrer" l'ajoute
+    comme nouvelle transaction. Le "+" natif du tableau (num_rows="dynamic")
+    reste disponible pour ajouter d'autres lignes, et le "−" natif pour en
+    supprimer ; un seul bouton "Enregistrer" par tableau persiste tout —
+    nouvelles lignes (insert), lignes modifiées (update), lignes retirées (delete).
 
     Args:
         df: transactions de la période (colonnes id, date, label, amount, category,
@@ -174,6 +177,17 @@ def _render_editable_direction(
         column_config["compte"] = st.column_config.SelectboxColumn(
             "Compte", options=list(account_options.keys()), required=False
         )
+
+    # Le "+" natif de Streamlit ajoute toujours une ligne en bas du tableau — pas
+    # adapté à un tri du plus récent au plus ancien. Une ligne vide reste donc
+    # toujours présente en tête, prête à remplir pour une nouvelle transaction.
+    blank_row = {"id": None, "date": date.today(), "label": "", "amount": 0.0, "category": None}
+    if account_options:
+        blank_row["compte"] = None
+    blank_df = pl.DataFrame([blank_row], schema=working.schema)
+    working = pl.concat([blank_df, working], how="diagonal_relaxed")
+
+    st.caption("La première ligne est toujours vide — remplis-la pour ajouter une transaction.")
 
     edited = st.data_editor(
         working,
