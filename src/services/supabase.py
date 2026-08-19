@@ -10,7 +10,14 @@ from typing import Any
 
 import streamlit as st
 
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
+
+# Le timeout par défaut de supabase-py (120s) fait qu'un simple hoquet réseau
+# bloque l'écriture en silence pendant 2 minutes — largement au-delà du délai
+# où la connexion websocket de Streamlit Cloud se coupe d'elle-même, ce qui
+# réinitialise la session et fait disparaître la saisie en cours sans message
+# clair. Un timeout court fait échouer l'appel vite, avec une erreur visible.
+_WRITE_TIMEOUT_SECONDS = 15
 
 
 @st.cache_resource
@@ -22,7 +29,8 @@ def get_supabase() -> Client:
     url: str = st.secrets["SUPABASE_URL"]
     dev_mode = str(st.secrets.get("DEV_MODE", "false")).lower() == "true"
     key: str = st.secrets["SUPABASE_SERVICE_KEY"] if dev_mode else st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+    options = ClientOptions(postgrest_client_timeout=_WRITE_TIMEOUT_SECONDS)
+    return create_client(url, key, options=options)
 
 
 def get_db_url() -> str:
