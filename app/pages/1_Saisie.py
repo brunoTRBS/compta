@@ -541,6 +541,13 @@ with tab_transfer:
         if st.button(f"↩️ Annuler la dernière suppression ({undo_count} écriture(s))", key="undo_transfer"):
             try:
                 for row in st.session_state[transfer_undo_key]:
+                    # Le snapshot vient directement de Polars : "date" y est un objet
+                    # datetime.date, pas un texte. Le client Supabase sérialise le payload
+                    # en JSON, qui ne sait pas encoder un date brut (TypeError) — d'où
+                    # l'échec systématique de la restauration sans ça.
+                    row_date = row.get("date")
+                    if hasattr(row_date, "isoformat"):
+                        row = {**row, "date": row_date.isoformat()}
                     insert_transaction(row)
                 st.session_state[transfer_undo_key] = []
                 invalidate_cache()

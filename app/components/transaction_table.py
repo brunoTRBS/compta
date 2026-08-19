@@ -324,6 +324,13 @@ def _render_editable_direction(
                     restore_payload = {
                         k: v for k, v in row.items() if k not in ("id", "created_at", "is_income")
                     }
+                    # Le snapshot vient directement de Polars : "date" y est un objet
+                    # datetime.date, pas un texte. Le client Supabase sérialise le payload
+                    # en JSON, qui ne sait pas encoder un date brut (TypeError) — d'où
+                    # l'échec systématique de la restauration sans ça.
+                    row_date = restore_payload.get("date")
+                    if hasattr(row_date, "isoformat"):
+                        restore_payload["date"] = row_date.isoformat()
                     insert_transaction(restore_payload)
                 restored_count = len(st.session_state[undo_key])
                 st.session_state[undo_key] = []
