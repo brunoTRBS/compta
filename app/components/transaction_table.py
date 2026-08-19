@@ -180,7 +180,16 @@ def _render_editable_direction(
         prev = st.session_state.get(last_edited_key)
         if prev is None:
             return
-        rows = [row for row in prev.iter_rows(named=True) if row.get("id") is None]
+        # Une ligne en attente (pas encore enregistrée, donc sans id) cochée "Supprimer"
+        # est écartée ici plutôt que reportée : c'est le seul moment où ce cas est traité,
+        # puisque delete_transaction() ne peut rien faire d'une ligne qui n'existe pas
+        # encore en base. Sans ce filtre, une ligne fraîchement ajoutée et cochée pour
+        # suppression réapparaissait au prochain ajout/suppression (elle était reportée
+        # telle quelle, sans jamais regarder la case cochée).
+        rows = [
+            row for row in prev.iter_rows(named=True)
+            if row.get("id") is None and not row.get("Supprimer")
+        ]
         for row in rows:
             row.pop("Supprimer", None)
             # L'aller-retour par le data_editor (qui passe par pandas) renvoie un
@@ -255,14 +264,25 @@ def _render_editable_direction(
     # immédiate (pas différée jusqu'à "Enregistrer") pour ne pas dépendre du
     # suivi par position du data_editor, fragile dès que les lignes bougent
     # (ex. ajout d'une nouvelle ligne) pour une action destructive.
+    #
+    # Une ligne en attente (pas encore enregistrée) cochée "Supprimer" est comptée
+    # à part : rien à supprimer en base pour elle (delete_transaction a besoin d'un
+    # id réel), _carry_over_pending() l'écarte simplement au clic. Sans ce second
+    # compteur, cocher une ligne tout juste ajoutée laissait le bouton grisé sur
+    # "(0)" — impossible de la retirer autrement qu'en vidant tous ses champs.
     to_delete_now = [
         row["id"] for row in edited.iter_rows(named=True)
         if row.get("id") and row.get("Supprimer")
     ]
+    to_discard_pending = [
+        row for row in edited.iter_rows(named=True)
+        if not row.get("id") and row.get("Supprimer")
+    ]
+    total_marked = len(to_delete_now) + len(to_discard_pending)
     if st.button(
-        f"🗑️ Supprimer ({len(to_delete_now)})",
+        f"🗑️ Supprimer ({total_marked})",
         key=f"{key}_confirm_delete",
-        disabled=not to_delete_now,
+        disabled=not total_marked,
         width='stretch',
     ):
         try:
@@ -274,7 +294,16 @@ def _render_editable_direction(
             invalidate_cache()
             del st.session_state[origin_key]
             st.session_state[version_key] += 1
-            st.toast(f"{len(to_delete_now)} transaction(s) supprimée(s) ✅", icon="✅")
+            if to_delete_now and to_discard_pending:
+                msg = (
+                    f"{len(to_delete_now)} transaction(s) supprimée(s), "
+                    f"{len(to_discard_pending)} ligne(s) en attente écartée(s) 🗑️"
+                )
+            elif to_discard_pending:
+                msg = f"{len(to_discard_pending)} ligne(s) en attente écartée(s) 🗑️"
+            else:
+                msg = f"{len(to_delete_now)} transaction(s) supprimée(s) ✅"
+            st.toast(msg, icon="🗑️")
             st.rerun()
         except Exception as exc:
             st.error(f"Erreur lors de la suppression : {exc}")
@@ -322,7 +351,11 @@ def _render_editable_direction(
         row_date_iso = row_date.isoformat() if hasattr(row_date, "isoformat") else row_date
 
         if row_id is None:
-            # Nouvelle ligne (ajoutée via le bouton) — ignorée tant qu'elle n'est pas complète.
+            # Nouvelle ligne (ajoutée via le bouton) — ignorée si cochée "Supprimer"
+            # (l'utilisateur a changé d'avis avant de cliquer Enregistrer) ou tant
+            # qu'elle n'est pas complète.
+            if row.get("Supprimer"):
+                continue
             if not row.get("label") or not row_date_iso or not row.get("amount"):
                 continue
             acc = account_options.get(row.get("compte")) if account_options else account_id
