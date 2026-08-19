@@ -303,9 +303,13 @@ def _render_transactions(business_id: BusinessId) -> None:
     with col_m:
         month_options: dict[str, int | None] = {"Tous": None}
         month_options.update({_MONTH_LABELS[m]: m for m in range(1, 13)})
+        # Le mois en cours par défaut (position today.month dans la liste,
+        # puisque "Tous" occupe l'index 0) ; "Tous" reste sélectionnable.
+        default_month_idx = today.month if year == current_year else 0
         sel_label: str = st.selectbox(
             "Mois",
             list(month_options.keys()),
+            index=default_month_idx,
             key=f"tx_month_{business_id}",
         )
     sel_month = month_options[sel_label]

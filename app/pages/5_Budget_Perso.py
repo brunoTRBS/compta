@@ -72,7 +72,12 @@ with tab_tx:
     with col_m:
         tx_month_options: dict[str, int | None] = {"Tous": None}
         tx_month_options.update({_MONTH_LABELS[m]: m for m in range(1, 13)})
-        tx_sel_label: str = st.selectbox("Mois", list(tx_month_options.keys()), key="perso_tx_month")
+        # Le mois en cours par défaut (position today.month dans la liste,
+        # puisque "Tous" occupe l'index 0) ; "Tous" reste sélectionnable.
+        tx_default_month_idx = today.month if tx_year == current_year else 0
+        tx_sel_label: str = st.selectbox(
+            "Mois", list(tx_month_options.keys()), index=tx_default_month_idx, key="perso_tx_month"
+        )
     tx_sel_month = tx_month_options[tx_sel_label]
 
     try:
