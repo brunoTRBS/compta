@@ -270,6 +270,13 @@ def _render_editable_direction(
         invalidate_cache()
         del st.session_state[origin_key]
         st.session_state[pending_key] = []
+        # Le data_editor mémorise ses propres modifications (ajouts/suppressions)
+        # sous sa clé, indépendamment des données qu'on lui repasse à chaque
+        # rerun — sans ce reset, une suppression déjà persistée pouvait
+        # "revenir" visuellement dès que la forme du tableau changeait.
+        editor_key = f"{key}_editor"
+        if editor_key in st.session_state:
+            del st.session_state[editor_key]
         st.toast(
             f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s), "
             f"{len(deleted_ids)} supprimée(s) ✅",
