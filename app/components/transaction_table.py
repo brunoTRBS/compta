@@ -259,6 +259,7 @@ def _render_editable_direction(
 
     new_rows: list[dict] = []
     updates: list[tuple[str, dict]] = []
+    incomplete_rows: list[dict] = []
 
     for row in edited.iter_rows(named=True):
         row_id = row.get("id")
@@ -267,11 +268,20 @@ def _render_editable_direction(
 
         if row_id is None:
             # Nouvelle ligne (ajoutée via le bouton) — ignorée si cochée "Supprimer"
-            # (l'utilisateur a changé d'avis avant de cliquer Enregistrer) ou tant
-            # qu'elle n'est pas complète.
+            # (l'utilisateur a changé d'avis avant de cliquer Enregistrer).
             if row.get("Supprimer"):
                 continue
             if not row.get("label") or not row_date_iso or not row.get("amount"):
+                # Incomplète : si l'utilisateur a déjà commencé à la remplir, on la
+                # garde en attente au lieu de l'effacer en silence (bug d'origine :
+                # la ligne disparaissait sans message même après un clic sur
+                # Enregistrer, si un des 3 champs requis manquait).
+                has_content = bool((row.get("label") or "").strip()) or bool(row.get("amount")) or row.get("category")
+                if has_content:
+                    kept = {k: v for k, v in row.items() if k != "Supprimer"}
+                    if isinstance(kept.get("date"), datetime):
+                        kept["date"] = kept["date"].date()
+                    incomplete_rows.append(kept)
                 continue
             acc = account_options.get(row.get("compte")) if account_options else account_id
             new_rows.append({
@@ -310,12 +320,20 @@ def _render_editable_direction(
             update_transaction(row_id, diff)
         invalidate_cache()
         del st.session_state[origin_key]
-        st.session_state[pending_key] = []
+        st.session_state[pending_key] = incomplete_rows
         st.session_state[version_key] += 1
-        st.toast(
-            f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s) ✅",
-            icon="✅",
-        )
+        if incomplete_rows:
+            st.toast(
+                f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s) — "
+                f"{len(incomplete_rows)} ligne(s) incomplète(s) conservée(s) : "
+                "libellé, date et montant sont obligatoires.",
+                icon="⚠️",
+            )
+        else:
+            st.toast(
+                f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s) ✅",
+                icon="✅",
+            )
         st.rerun()
     except Exception as exc:
         st.error(f"Erreur lors de l'enregistrement : {exc}")
