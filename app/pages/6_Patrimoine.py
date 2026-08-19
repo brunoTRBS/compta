@@ -19,7 +19,12 @@ from src.services.db_reader import (
     read_accounts,
     read_patrimoine_evolution,
 )
-from src.services.supabase import delete_balance_snapshot, fetch_accounts, update_account_balance
+from src.services.supabase import (
+    delete_balance_snapshot,
+    fetch_accounts,
+    restore_balance_snapshot,
+    update_account_balance,
+)
 
 st.set_page_config(page_title="Patrimoine", page_icon="🏦", layout="wide")
 require_auth()
@@ -202,6 +207,17 @@ else:
         st.error(f"Impossible de charger l'historique : {exc}")
         history_df = pl.DataFrame()
 
+    # Numéro de version dans la clé du tableau : sans ça, Streamlit peut réappliquer
+    # une case cochée à la mauvaise ligne après une suppression (les lignes se décalent),
+    # donnant l'impression qu'une ligne supprimée "revient" ou qu'une case ne "prend" pas.
+    history_version_key = f"history_version_{history_account_id}"
+    if history_version_key not in st.session_state:
+        st.session_state[history_version_key] = 0
+
+    history_undo_key = f"history_undo_{history_account_id}"
+    if history_undo_key not in st.session_state:
+        st.session_state[history_undo_key] = []
+
     if history_df.is_empty():
         st.info("Aucun solde enregistré pour ce compte pour le moment.")
     else:
@@ -210,7 +226,7 @@ else:
         )
         edited_history = st.data_editor(
             display_history,
-            key=f"history_editor_{history_account_id}",
+            key=f"history_editor_{history_account_id}_v{st.session_state[history_version_key]}",
             width='stretch',
             hide_index=True,
             disabled=["id", "date", "balance"],
@@ -230,10 +246,33 @@ else:
             disabled=not snapshots_to_delete,
         ):
             try:
+                snapshot = history_df.filter(pl.col("id").is_in(snapshots_to_delete)).select(
+                    ["date", "balance"]
+                ).to_dicts()
                 for snapshot_id in snapshots_to_delete:
                     delete_balance_snapshot(history_account_id, snapshot_id)
+                st.session_state[history_undo_key] = snapshot
                 invalidate_cache()
+                st.session_state[history_version_key] += 1
                 st.toast(f"{len(snapshots_to_delete)} point(s) supprimé(s).", icon="🗑️")
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+
+        # Le bouton "Annuler" ne s'affiche que juste après une suppression, tant qu'elle
+        # n'a pas été remplacée par une autre.
+        if st.session_state[history_undo_key]:
+            undo_hist_count = len(st.session_state[history_undo_key])
+            if st.button(f"↩️ Annuler la dernière suppression ({undo_hist_count} point(s))", key="undo_history"):
+                try:
+                    for row in st.session_state[history_undo_key]:
+                        date_val = row["date"]
+                        date_iso = date_val.isoformat() if hasattr(date_val, "isoformat") else str(date_val)
+                        restore_balance_snapshot(history_account_id, date_iso, float(row["balance"]))
+                    st.session_state[history_undo_key] = []
+                    invalidate_cache()
+                    st.session_state[history_version_key] += 1
+                    st.toast(f"{undo_hist_count} point(s) restauré(s) ✅", icon="✅")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Erreur lors de la restauration : {exc}")

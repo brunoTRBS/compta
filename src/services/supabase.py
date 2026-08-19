@@ -218,6 +218,30 @@ def delete_balance_snapshot(account_id: str, snapshot_id: str) -> None:
     client.table("accounts").update({"balance": new_balance}).eq("id", account_id).execute()
 
 
+def restore_balance_snapshot(account_id: str, date: str, balance: float) -> None:
+    """Réinsère un point d'historique supprimé par erreur (annulation immédiate).
+
+    Recalcule ensuite accounts.balance à partir du point le plus récent restant,
+    avec la même logique que delete_balance_snapshot — évite toute divergence entre
+    les deux selon l'ordre des opérations.
+    """
+    client = get_supabase()
+    snapshot = {"account_id": account_id, "date": date, "balance": balance}
+    client.table("account_balance_history").upsert(snapshot, on_conflict="account_id,date").execute()
+
+    remaining = (
+        client.table("account_balance_history")
+        .select("balance")
+        .eq("account_id", account_id)
+        .order("date", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    new_balance = remaining[0]["balance"] if remaining else 0
+    client.table("accounts").update({"balance": new_balance}).eq("id", account_id).execute()
+
+
 # ---------------------------------------------------------------------------
 # Transactions récurrentes
 # ---------------------------------------------------------------------------

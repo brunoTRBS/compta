@@ -291,6 +291,18 @@ with tab_recurring:
 
     # --- Gérer les récurrences existantes ---
     st.markdown("**Mes récurrences**")
+
+    # Numéro de version dans la clé du tableau : sans ça, Streamlit peut réappliquer
+    # une case cochée à la mauvaise ligne après une suppression (les lignes se décalent),
+    # donnant l'impression qu'une ligne supprimée "revient" ou qu'une case ne "prend" pas.
+    rec_version_key = "recurring_manage_version"
+    if rec_version_key not in st.session_state:
+        st.session_state[rec_version_key] = 0
+
+    rec_undo_key = "recurring_manage_undo"
+    if rec_undo_key not in st.session_state:
+        st.session_state[rec_undo_key] = []
+
     if recurring_df.is_empty():
         st.info("Aucune récurrence créée pour le moment.")
     else:
@@ -304,7 +316,7 @@ with tab_recurring:
         )
         edited_manage = st.data_editor(
             manage_display,
-            key="manage_recurring_editor",
+            key=f"manage_recurring_editor_v{st.session_state[rec_version_key]}",
             width='stretch',
             hide_index=True,
             disabled=["id", "label", "compte_nom", "amount_abs", "category", "day_of_month"],
@@ -333,6 +345,7 @@ with tab_recurring:
                         changed_count += 1
                 if changed_count:
                     invalidate_cache()
+                    st.session_state[rec_version_key] += 1
                     st.toast(f"{changed_count} récurrence(s) mise(s) à jour ✅", icon="✅")
                     st.rerun()
                 else:
@@ -345,13 +358,36 @@ with tab_recurring:
                 width='stretch', disabled=not recurring_to_delete,
             ):
                 try:
+                    _EXCLUDE = ("id",)
+                    snapshot = [
+                        {k: v for k, v in row.items() if k not in _EXCLUDE}
+                        for row in recurring_df.filter(pl.col("id").is_in(recurring_to_delete)).to_dicts()
+                    ]
                     for rec_id in recurring_to_delete:
                         delete_recurring_transaction(rec_id)
+                    st.session_state[rec_undo_key] = snapshot
                     invalidate_cache()
+                    st.session_state[rec_version_key] += 1
                     st.toast(f"{len(recurring_to_delete)} récurrence(s) supprimée(s) 🗑️", icon="🗑️")
                     st.rerun()
                 except Exception as exc:
                     st.error(str(exc))
+
+        # Le bouton "Annuler" ne s'affiche que juste après une suppression, tant qu'elle
+        # n'a pas été remplacée par une autre.
+        if st.session_state[rec_undo_key]:
+            undo_rec_count = len(st.session_state[rec_undo_key])
+            if st.button(f"↩️ Annuler la dernière suppression ({undo_rec_count} récurrence(s))", key="undo_recurring"):
+                try:
+                    for row in st.session_state[rec_undo_key]:
+                        insert_recurring_transaction(row)
+                    st.session_state[rec_undo_key] = []
+                    invalidate_cache()
+                    st.session_state[rec_version_key] += 1
+                    st.toast(f"{undo_rec_count} récurrence(s) restaurée(s) ✅", icon="✅")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Erreur lors de la restauration : {exc}")
 
 # ---------------------------------------------------------------------------
 # Onglet 3 — Virement entre comptes
@@ -434,6 +470,17 @@ with tab_transfer:
         pair_transfers(transfer_year_df, _accounts_df) if not transfer_year_df.is_empty() else pl.DataFrame()
     )
 
+    # Numéro de version dans la clé du tableau : sans ça, Streamlit peut réappliquer
+    # une case cochée à la mauvaise ligne après une suppression (les lignes se décalent),
+    # donnant l'impression qu'une ligne supprimée "revient" ou qu'une case ne "prend" pas.
+    transfer_version_key = f"transfer_version_{transfer_list_year}"
+    if transfer_version_key not in st.session_state:
+        st.session_state[transfer_version_key] = 0
+
+    transfer_undo_key = f"transfer_undo_{transfer_list_year}"
+    if transfer_undo_key not in st.session_state:
+        st.session_state[transfer_undo_key] = []
+
     if recent_transfers.is_empty():
         st.info("Aucun virement enregistré sur cette période.")
     else:
@@ -445,7 +492,7 @@ with tab_transfer:
         )
         edited_transfers = st.data_editor(
             transfers_display,
-            key=f"transfers_table_{transfer_list_year}",
+            key=f"transfers_table_{transfer_list_year}_v{st.session_state[transfer_version_key]}",
             width='stretch',
             hide_index=True,
             disabled=["transfer_group_id", "date", "label", "from_account", "to_account", "amount"],
@@ -468,13 +515,40 @@ with tab_transfer:
             disabled=not transfers_to_delete,
         ):
             try:
+                # Snapshot des 2 écritures de chaque virement coché (pour pouvoir les
+                # recréer à l'identique si l'utilisateur annule juste après).
+                _EXCLUDE = ("id", "created_at", "is_income")
+                snapshot = [
+                    {k: v for k, v in row.items() if k not in _EXCLUDE}
+                    for row in transfer_year_df.filter(
+                        pl.col("transfer_group_id").is_in(transfers_to_delete)
+                    ).to_dicts()
+                ]
                 for transfer_group_id in transfers_to_delete:
                     delete_transfer(transfer_group_id)
+                st.session_state[transfer_undo_key] = snapshot
                 invalidate_cache()
+                st.session_state[transfer_version_key] += 1
                 st.toast(f"{len(transfers_to_delete)} virement(s) supprimé(s).", icon="🗑️")
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+
+    # Le bouton "Annuler" ne s'affiche que juste après une suppression, tant qu'elle
+    # n'a pas été remplacée par une autre.
+    if st.session_state[transfer_undo_key]:
+        undo_count = len(st.session_state[transfer_undo_key])
+        if st.button(f"↩️ Annuler la dernière suppression ({undo_count} écriture(s))", key="undo_transfer"):
+            try:
+                for row in st.session_state[transfer_undo_key]:
+                    insert_transaction(row)
+                st.session_state[transfer_undo_key] = []
+                invalidate_cache()
+                st.session_state[transfer_version_key] += 1
+                st.toast(f"{undo_count} écriture(s) restaurée(s) ✅", icon="✅")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Erreur lors de la restauration : {exc}")
 
 # ---------------------------------------------------------------------------
 # Onglet 4 — File des transactions en attente
