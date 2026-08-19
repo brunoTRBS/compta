@@ -27,18 +27,18 @@ _MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
 
 
 def render_dashboard(business_id: BusinessId, business_name: str) -> None:
-    tab_monthly, tab_global, tab_tx = st.tabs(
-        ["📅 Vue mensuelle", "📊 Vue globale", "🏷️ Transactions"]
+    tab_tx, tab_monthly, tab_global = st.tabs(
+        ["🏷️ Transactions", "📅 Vue mensuelle", "📊 Vue globale"]
     )
+
+    with tab_tx:
+        _render_transactions(business_id)
 
     with tab_monthly:
         _render_monthly_view(business_id)
 
     with tab_global:
         _render_global_view(business_id)
-
-    with tab_tx:
-        _render_transactions(business_id)
 
 
 # ---------------------------------------------------------------------------
