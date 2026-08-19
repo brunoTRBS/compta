@@ -309,21 +309,21 @@ with tab_global:
     if df_g.is_empty():
         st.info("Aucune transaction sur la période sélectionnée.")
     else:
-        st.subheader("Revenus par catégorie et par mois")
-        rev_pivot = pivot_by_category_month(df_g, "income")
-        if rev_pivot.is_empty():
-            st.info("Aucun revenu sur la période.")
-        else:
-            _show_pivot(rev_pivot)
-
-        st.divider()
-
         st.subheader("Dépenses par catégorie et par mois")
         exp_pivot = pivot_by_category_month(df_g, "expense")
         if exp_pivot.is_empty():
             st.info("Aucune dépense sur la période.")
         else:
             _show_pivot(exp_pivot)
+
+        st.divider()
+
+        st.subheader("Revenus par catégorie et par mois")
+        rev_pivot = pivot_by_category_month(df_g, "income")
+        if rev_pivot.is_empty():
+            st.info("Aucun revenu sur la période.")
+        else:
+            _show_pivot(rev_pivot)
 
         st.divider()
 

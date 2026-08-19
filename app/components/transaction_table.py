@@ -37,16 +37,16 @@ def render_editable_transactions(
         account_options: {libellé affiché: id} si plusieurs comptes possibles —
             affiche une colonne Compte éditable. Mutuellement exclusif avec account_id.
     """
-    tab_income, tab_expense = st.tabs(["↑ Revenus", "↓ Dépenses"])
-    with tab_income:
-        _render_editable_direction(
-            df.filter(pl.col("amount") > 0), "income", business_id, f"{key}_income",
-            categories_by_direction.get("income", []), account_id, account_options,
-        )
+    tab_expense, tab_income = st.tabs(["↓ Dépenses", "↑ Revenus"])
     with tab_expense:
         _render_editable_direction(
             df.filter(pl.col("amount") < 0), "expense", business_id, f"{key}_expense",
             categories_by_direction.get("expense", []), account_id, account_options,
+        )
+    with tab_income:
+        _render_editable_direction(
+            df.filter(pl.col("amount") > 0), "income", business_id, f"{key}_income",
+            categories_by_direction.get("income", []), account_id, account_options,
         )
 
 

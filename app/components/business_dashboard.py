@@ -107,6 +107,34 @@ def _render_monthly_view(business_id: BusinessId) -> None:
 
     st.divider()
 
+    # --- Tableau dépenses par catégorie ---
+    st.subheader("Dépenses par catégorie")
+    exp_df = aggregate_expenses_by_category(df)
+    if exp_df.is_empty():
+        st.info("Aucune dépense sur ce mois.")
+    else:
+        totals_exp = pl.DataFrame({
+            "category": ["Total"],
+            "total": [exp_df["total"].sum()],
+            "pct": [100.0],
+        })
+        display_exp = pl.concat([exp_df, totals_exp]).rename({
+            "category": "Catégorie",
+            "total": "Total (€)",
+            "pct": "%",
+        })
+        st.dataframe(
+            display_exp.to_pandas(),
+            width='stretch',
+            hide_index=True,
+            column_config={
+                "Total (€)": st.column_config.NumberColumn(format="%.2f €"),
+                "%": st.column_config.NumberColumn(format="%.1f %%"),
+            },
+        )
+
+    st.divider()
+
     # --- Tableau revenus par catégorie ---
     st.subheader("Revenus par catégorie")
     rev_df = aggregate_revenue_by_category(df, business_id)
@@ -136,34 +164,6 @@ def _render_monthly_view(business_id: BusinessId) -> None:
                 "URSSAF (€)": st.column_config.NumberColumn(format="%.2f €"),
                 "CA Net (€)": st.column_config.NumberColumn(format="%.2f €"),
                 "% CA net": st.column_config.NumberColumn(format="%.1f %%"),
-            },
-        )
-
-    st.divider()
-
-    # --- Tableau dépenses par catégorie ---
-    st.subheader("Dépenses par catégorie")
-    exp_df = aggregate_expenses_by_category(df)
-    if exp_df.is_empty():
-        st.info("Aucune dépense sur ce mois.")
-    else:
-        totals_exp = pl.DataFrame({
-            "category": ["Total"],
-            "total": [exp_df["total"].sum()],
-            "pct": [100.0],
-        })
-        display_exp = pl.concat([exp_df, totals_exp]).rename({
-            "category": "Catégorie",
-            "total": "Total (€)",
-            "pct": "%",
-        })
-        st.dataframe(
-            display_exp.to_pandas(),
-            width='stretch',
-            hide_index=True,
-            column_config={
-                "Total (€)": st.column_config.NumberColumn(format="%.2f €"),
-                "%": st.column_config.NumberColumn(format="%.1f %%"),
             },
         )
 
@@ -234,16 +234,6 @@ def _render_global_view(business_id: BusinessId) -> None:
             "1er jour du mois de dépassement — consultez un expert-comptable."
         )
 
-    # --- Tableau croisé revenus ---
-    st.subheader("Revenus par catégorie et par mois")
-    rev_pivot = pivot_by_category_month(df, "income")
-    if rev_pivot.is_empty():
-        st.info("Aucun revenu sur la période.")
-    else:
-        _show_pivot(rev_pivot)
-
-    st.divider()
-
     # --- Tableau croisé dépenses ---
     st.subheader("Dépenses par catégorie et par mois")
     exp_pivot = pivot_by_category_month(df, "expense")
@@ -251,6 +241,16 @@ def _render_global_view(business_id: BusinessId) -> None:
         st.info("Aucune dépense sur la période.")
     else:
         _show_pivot(exp_pivot)
+
+    st.divider()
+
+    # --- Tableau croisé revenus ---
+    st.subheader("Revenus par catégorie et par mois")
+    rev_pivot = pivot_by_category_month(df, "income")
+    if rev_pivot.is_empty():
+        st.info("Aucun revenu sur la période.")
+    else:
+        _show_pivot(rev_pivot)
 
     st.divider()
 
