@@ -5,6 +5,10 @@ from typing import Callable
 import polars as pl
 import streamlit as st
 
+from src.config import TransactionSource
+from src.services.db_reader import invalidate_cache
+from src.services.supabase import delete_transaction, insert_transaction, update_transaction
+
 
 def render_transaction_table(
     df: pl.DataFrame,
@@ -95,3 +99,161 @@ def _render_direction_table(df: pl.DataFrame, key: str, categories: list[str]) -
         edited = pl.from_pandas(edited)
 
     return edited
+
+
+def render_editable_transactions(
+    df: pl.DataFrame,
+    business_id: str,
+    key: str,
+    categories_by_direction: dict[str, list[str]],
+    account_id: str | None = None,
+    account_options: dict[str, str] | None = None,
+) -> None:
+    """Tableau Revenus/Dépenses éditable, avec ajout de ligne directe.
+
+    Une nouvelle ligne s'ajoute via le "+" natif du tableau (num_rows="dynamic") :
+    tu la remplies sur place, puis un seul bouton "Enregistrer" par tableau
+    persiste tout — nouvelles lignes (insert), lignes modifiées (update) et
+    lignes retirées via le "−" natif (delete).
+
+    Args:
+        df: transactions de la période (colonnes id, date, label, amount, category,
+            et account_id si account_options est fourni).
+        business_id: activité fixe appliquée à toute nouvelle ligne créée ici.
+        key: préfixe unique pour les clés de widgets.
+        categories_by_direction: {"income": [...], "expense": [...]}.
+        account_id: compte fixe pour les nouvelles lignes (page à 1 seul compte).
+        account_options: {libellé affiché: id} si plusieurs comptes possibles —
+            affiche une colonne Compte éditable. Mutuellement exclusif avec account_id.
+    """
+    tab_income, tab_expense = st.tabs(["↑ Revenus", "↓ Dépenses"])
+    with tab_income:
+        _render_editable_direction(
+            df.filter(pl.col("amount") > 0), "income", business_id, f"{key}_income",
+            categories_by_direction.get("income", []), account_id, account_options,
+        )
+    with tab_expense:
+        _render_editable_direction(
+            df.filter(pl.col("amount") < 0), "expense", business_id, f"{key}_expense",
+            categories_by_direction.get("expense", []), account_id, account_options,
+        )
+
+
+def _render_editable_direction(
+    direction_df: pl.DataFrame,
+    direction: str,
+    business_id: str,
+    key: str,
+    categories: list[str],
+    account_id: str | None,
+    account_options: dict[str, str] | None,
+) -> None:
+    origin_key = f"{key}_origin"
+    if origin_key not in st.session_state:
+        st.session_state[origin_key] = direction_df.to_dicts()
+
+    display_cols = [c for c in ["id", "date", "label", "amount", "category"] if c in direction_df.columns]
+    working = direction_df.select(display_cols).with_columns(pl.col("amount").abs())
+
+    id_to_account_name: dict[str, str] = {}
+    if account_options:
+        id_to_account_name = {v: k for k, v in account_options.items()}
+        account_ids = direction_df["account_id"].to_list() if "account_id" in direction_df.columns else []
+        working = working.with_columns(
+            pl.Series("compte", [id_to_account_name.get(a) for a in account_ids])
+        )
+
+    column_config: dict = {
+        "id": None,
+        "date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
+        "label": st.column_config.TextColumn("Libellé", width="large"),
+        "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €", min_value=0.0),
+        "category": st.column_config.SelectboxColumn("Catégorie", options=categories, required=False),
+    }
+    if account_options:
+        column_config["compte"] = st.column_config.SelectboxColumn(
+            "Compte", options=list(account_options.keys()), required=False
+        )
+
+    edited = st.data_editor(
+        working,
+        key=f"{key}_editor",
+        width='stretch',
+        hide_index=True,
+        num_rows="dynamic",
+        disabled=["id"],
+        column_config=column_config,
+    )
+    if not isinstance(edited, pl.DataFrame):
+        edited = pl.from_pandas(edited)
+
+    if not st.button("💾 Enregistrer", key=f"{key}_save", width='stretch'):
+        return
+
+    origin_map = {row["id"]: row for row in st.session_state[origin_key] if row.get("id")}
+    original_ids = set(origin_map.keys())
+    sign = 1.0 if direction == "income" else -1.0
+
+    new_rows: list[dict] = []
+    updates: list[tuple[str, dict]] = []
+    seen_ids: set[str] = set()
+
+    for row in edited.iter_rows(named=True):
+        row_id = row.get("id")
+        row_date = row.get("date")
+        row_date_iso = row_date.isoformat() if hasattr(row_date, "isoformat") else row_date
+
+        if row_id is None:
+            # Nouvelle ligne (ajoutée via le "+") — ignorée tant qu'elle n'est pas complète.
+            if not row.get("label") or not row_date_iso or not row.get("amount"):
+                continue
+            acc = account_options.get(row.get("compte")) if account_options else account_id
+            new_rows.append({
+                "date": row_date_iso,
+                "amount": abs(float(row["amount"])) * sign,
+                "label": row["label"],
+                "source": str(TransactionSource.MANUAL),
+                "business_id": business_id,
+                "account_id": acc,
+                "category": row.get("category"),
+                "notes": None,
+            })
+        else:
+            seen_ids.add(row_id)
+            orig = origin_map.get(row_id, {})
+            diff: dict = {}
+            if row.get("label") != orig.get("label"):
+                diff["label"] = row.get("label")
+            if row.get("category") != orig.get("category"):
+                diff["category"] = row.get("category")
+            new_amount = abs(float(row["amount"])) * sign
+            if abs(new_amount - float(orig.get("amount", 0) or 0)) > 0.001:
+                diff["amount"] = new_amount
+            if str(row_date_iso) != str(orig.get("date")):
+                diff["date"] = row_date_iso
+            if account_options:
+                new_acc = account_options.get(row.get("compte"))
+                if new_acc != orig.get("account_id"):
+                    diff["account_id"] = new_acc
+            if diff:
+                updates.append((row_id, diff))
+
+    deleted_ids = original_ids - seen_ids
+
+    try:
+        for payload in new_rows:
+            insert_transaction(payload)
+        for row_id, diff in updates:
+            update_transaction(row_id, diff)
+        for row_id in deleted_ids:
+            delete_transaction(row_id)
+        invalidate_cache()
+        del st.session_state[origin_key]
+        st.toast(
+            f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s), "
+            f"{len(deleted_ids)} supprimée(s) ✅",
+            icon="✅",
+        )
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Erreur lors de l'enregistrement : {exc}")

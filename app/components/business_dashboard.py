@@ -7,6 +7,7 @@ import plotly.express as px
 import polars as pl
 import streamlit as st
 
+from app.components.transaction_table import render_editable_transactions
 from src.config import BusinessId
 from src.logic.revenue import (
     _MONTH_LABELS,
@@ -16,11 +17,7 @@ from src.logic.revenue import (
     compute_ytd_summary,
     pivot_by_category_month,
 )
-from src.services.db_reader import invalidate_cache, read_categories, read_transactions
-from src.services.supabase import bulk_update_categories
-
-from app.components.quick_entry import render_quick_entry_form
-from app.components.transaction_table import render_transaction_table
+from src.services.db_reader import read_accounts, read_categories, read_transactions
 
 _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
 _MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
@@ -274,8 +271,6 @@ def _show_pivot(pivot: pl.DataFrame) -> None:
 # ---------------------------------------------------------------------------
 
 def _render_transactions(business_id: BusinessId) -> None:
-    render_quick_entry_form(str(business_id), key_prefix=f"tx_{business_id}")
-
     today = date.today()
     current_year = today.year
 
@@ -302,16 +297,23 @@ def _render_transactions(business_id: BusinessId) -> None:
         st.error(f"Impossible de charger les transactions : {exc}")
         return
 
-    if df.is_empty():
-        st.info("Aucune transaction sur la période sélectionnée.")
-        return
-
-    def save_categories(updates: list[dict]) -> None:
-        bulk_update_categories(updates)
-        invalidate_cache()
-
     cat_df = read_categories(business_id=str(business_id))
-    categories = sorted(cat_df["name"].to_list())
-    render_transaction_table(
-        df, key=f"table_{business_id}", categories=categories, on_save=save_categories
+    categories_by_direction = {
+        "income": sorted(cat_df.filter(pl.col("direction") == "income")["name"].to_list())
+        if not cat_df.is_empty() else [],
+        "expense": sorted(cat_df.filter(pl.col("direction") == "expense")["name"].to_list())
+        if not cat_df.is_empty() else [],
+    }
+
+    accounts_df = read_accounts(owner=str(business_id))
+    account_id = accounts_df["id"][0] if not accounts_df.is_empty() else None
+    if account_id is None:
+        st.warning("Aucun compte configuré pour cette activité — impossible d'ajouter une transaction.")
+
+    render_editable_transactions(
+        df,
+        business_id=str(business_id),
+        key=f"tx_{business_id}",
+        categories_by_direction=categories_by_direction,
+        account_id=account_id,
     )
