@@ -1,21 +1,26 @@
 """Page Budget Personnel — dépenses, épargne, catégorisation."""
 
-import polars as pl
-import plotly.express as px
-import streamlit as st
 from datetime import date
 
+import plotly.express as px
+import polars as pl
+import streamlit as st
+
+from app.components.auth import require_auth
+from app.components.quick_entry import render_quick_entry_form
 from src.config import (
-    BusinessId,
     PERSO_OPENING_BALANCE,
     PERSO_OPENING_BALANCE_MONTH,
     PERSO_OPENING_BALANCE_YEAR,
+    BusinessId,
 )
-from src.logic.budget import breakdown_by_category, compute_budget_summary, compute_cumulative_balance
+from src.logic.budget import (
+    breakdown_by_category,
+    compute_budget_summary,
+    compute_cumulative_balance,
+)
 from src.logic.consolidated import personal_income_from_transfers
 from src.logic.revenue import monthly_benefice
-from app.components.auth import require_auth
-from app.components.quick_entry import render_quick_entry_form
 from src.services.db_reader import read_accounts, read_transactions
 
 st.set_page_config(page_title="Budget Perso", page_icon="💰", layout="wide")

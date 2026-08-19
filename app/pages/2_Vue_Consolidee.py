@@ -6,11 +6,11 @@ import plotly.express as px
 import polars as pl
 import streamlit as st
 
+from app.components.auth import require_auth
 from src.config import BusinessId
 from src.logic.budget import compute_budget_summary
-from src.logic.revenue import _MONTH_LABELS, aggregate_monthly_from_df
 from src.logic.consolidated import flows_per_account, pair_transfers
-from app.components.auth import require_auth
+from src.logic.revenue import _MONTH_LABELS, aggregate_monthly_from_df
 from src.services.db_reader import read_accounts, read_transactions
 
 st.set_page_config(page_title="Vue consolidée", page_icon="🧮", layout="wide")

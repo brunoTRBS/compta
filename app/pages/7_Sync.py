@@ -5,12 +5,12 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from app.components.auth import require_auth
 from src.config import BusinessId
-from src.logic.statement_parser import map_statement_transaction, parse_boursobank_csv
 from src.logic.import_pipeline import run_full_pipeline
+from src.logic.statement_parser import map_statement_transaction, parse_boursobank_csv
 from src.services.db_reader import invalidate_cache, read_transactions
 from src.services.stripe_client import fetch_payment_intents, map_payment_intent
-from app.components.auth import require_auth
 
 st.set_page_config(page_title="Synchronisation", page_icon="🔄", layout="wide")
 require_auth()

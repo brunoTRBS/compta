@@ -1,10 +1,12 @@
 """Page Bilan Patrimonial — soldes, évolution, mise à jour manuelle."""
 
+from datetime import date
+
 import plotly.express as px
 import polars as pl
 import streamlit as st
-from datetime import date
 
+from app.components.auth import require_auth
 from src.logic.patrimoine import (
     aggregate_by_account_type,
     compute_net_worth,
@@ -18,7 +20,6 @@ from src.services.db_reader import (
     read_patrimoine_evolution,
 )
 from src.services.supabase import delete_balance_snapshot, fetch_accounts, update_account_balance
-from app.components.auth import require_auth
 
 st.set_page_config(page_title="Patrimoine", page_icon="🏦", layout="wide")
 require_auth()

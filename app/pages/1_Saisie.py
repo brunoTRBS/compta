@@ -5,6 +5,8 @@ from datetime import date
 import polars as pl
 import streamlit as st
 
+from app.components.auth import require_auth
+from app.components.transaction_table import render_transaction_table
 from src.config import BusinessId, TransactionSource
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
 from src.logic.consolidated import pair_transfers
@@ -29,8 +31,6 @@ from src.services.supabase import (
     update_recurring_transaction,
     update_transaction,
 )
-from app.components.auth import require_auth
-from app.components.transaction_table import render_transaction_table
 
 st.set_page_config(page_title="Saisie & Corrections", page_icon="✏️", layout="wide")
 require_auth()

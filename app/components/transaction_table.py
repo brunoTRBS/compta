@@ -159,6 +159,14 @@ def _render_editable_direction(
     if pending_key not in st.session_state:
         st.session_state[pending_key] = []
 
+    # Le data_editor mémorise ses propres modifications (ajouts/suppressions) sous
+    # sa clé, indépendamment des données qu'on lui repasse à chaque rerun. Un
+    # numéro de version dans la clé force un widget entièrement neuf après chaque
+    # enregistrement — plus fiable qu'un del st.session_state après coup.
+    version_key = f"{key}_version"
+    if version_key not in st.session_state:
+        st.session_state[version_key] = 0
+
     # Ajout piloté par un bouton (pas le "+" natif, qui ajoute toujours en bas et
     # perturbe le suivi des lignes existantes) : la nouvelle ligne vide s'insère
     # en tête, remplie sur place, tri du plus récent au plus ancien respecté.
@@ -199,7 +207,7 @@ def _render_editable_direction(
 
     edited = st.data_editor(
         working,
-        key=f"{key}_editor",
+        key=f"{key}_editor_v{st.session_state[version_key]}",
         width='stretch',
         hide_index=True,
         num_rows="fixed",
@@ -270,13 +278,7 @@ def _render_editable_direction(
         invalidate_cache()
         del st.session_state[origin_key]
         st.session_state[pending_key] = []
-        # Le data_editor mémorise ses propres modifications (ajouts/suppressions)
-        # sous sa clé, indépendamment des données qu'on lui repasse à chaque
-        # rerun — sans ce reset, une suppression déjà persistée pouvait
-        # "revenir" visuellement dès que la forme du tableau changeait.
-        editor_key = f"{key}_editor"
-        if editor_key in st.session_state:
-            del st.session_state[editor_key]
+        st.session_state[version_key] += 1
         st.toast(
             f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s), "
             f"{len(deleted_ids)} supprimée(s) ✅",
