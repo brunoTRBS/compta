@@ -1,7 +1,7 @@
 """Section réutilisable : transactions récurrentes (à valider, créer, gérer).
 
-Peut afficher toutes les récurrences (Saisie) ou seulement celles d'une
-activité donnée (Phi Rising, Booth in Lyon, Budget Perso).
+Peut afficher toutes les récurrences (toutes activités) ou seulement celles
+d'une activité donnée (Phi Rising, Booth in Lyon, Budget Perso).
 """
 
 from datetime import date
@@ -38,7 +38,7 @@ def render_recurring_section(key_prefix: str, business_id_filter: str | None = N
         key_prefix: préfixe unique pour les clés de widgets (une section par page).
         business_id_filter: si fourni, limite tout à cette activité (pas de
             sélecteur d'activité dans le formulaire de création, comptes filtrés).
-            Si None, comportement global (toutes activités, comme sur Saisie).
+            Si None, comportement global (toutes activités).
     """
     accounts_df = read_accounts()
     id_to_account_name: dict[str, str] = (
