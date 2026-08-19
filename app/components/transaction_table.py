@@ -1,6 +1,6 @@
 """Composant réutilisable : tableau de transactions éditable."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Callable
 
 import polars as pl
@@ -183,6 +183,12 @@ def _render_editable_direction(
         rows = [row for row in prev.iter_rows(named=True) if row.get("id") is None]
         for row in rows:
             row.pop("Supprimer", None)
+            # L'aller-retour par le data_editor (qui passe par pandas) renvoie un
+            # datetime plutôt qu'un date pour cette colonne : sans cette
+            # normalisation, la reconstruction du DataFrame avec le schéma
+            # d'origine (colonne "date" typée Date) plante avec un ComputeError.
+            if isinstance(row.get("date"), datetime):
+                row["date"] = row["date"].date()
         st.session_state[pending_key] = rows
 
     # Ajout piloté par un bouton (pas le "+" natif, qui ajoute toujours en bas et
