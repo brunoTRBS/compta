@@ -171,10 +171,25 @@ def _render_editable_direction(
     if version_key not in st.session_state:
         st.session_state[version_key] = 0
 
+    # Dernier contenu édité connu (posé en fin de fonction) : sert à récupérer ce
+    # que l'utilisateur a tapé dans les nouvelles lignes avant de forcer un
+    # widget neuf (changement de version), pour ne pas perdre sa saisie en cours.
+    last_edited_key = f"{key}_last_edited"
+
+    def _carry_over_pending() -> None:
+        prev = st.session_state.get(last_edited_key)
+        if prev is None:
+            return
+        rows = [row for row in prev.iter_rows(named=True) if row.get("id") is None]
+        for row in rows:
+            row.pop("Supprimer", None)
+        st.session_state[pending_key] = rows
+
     # Ajout piloté par un bouton (pas le "+" natif, qui ajoute toujours en bas et
     # perturbe le suivi des lignes existantes) : la nouvelle ligne vide s'insère
     # en tête, remplie sur place, tri du plus récent au plus ancien respecté.
     if st.button("➕ Ajouter une transaction", key=f"{key}_add_row"):
+        _carry_over_pending()
         blank_row = {"id": None, "date": date.today(), "label": "", "amount": 0.0, "category": None}
         if account_options:
             blank_row["compte"] = None
@@ -227,6 +242,7 @@ def _render_editable_direction(
     )
     if not isinstance(edited, pl.DataFrame):
         edited = pl.from_pandas(edited)
+    st.session_state[last_edited_key] = edited
 
     # La suppression n'a lieu que si la case ET le bouton sont utilisés — pas la
     # case seule — pour éviter une suppression accidentelle en un clic. Elle est
@@ -237,29 +253,14 @@ def _render_editable_direction(
         row["id"] for row in edited.iter_rows(named=True)
         if row.get("id") and row.get("Supprimer")
     ]
-    delete_label = (
-        f"🗑️ Supprimer la sélection ({len(to_delete_now)})"
-        if to_delete_now else "🗑️ Supprimer la sélection"
-    )
-    col_delete, col_undo = st.columns(2)
-    with col_delete:
-        confirm_delete = st.button(
-            delete_label,
-            key=f"{key}_confirm_delete",
-            disabled=not to_delete_now,
-            width='stretch',
-        )
-    with col_undo:
-        undo_delete = st.button(
-            f"↩️ Annuler la suppression ({len(st.session_state[undo_key])})"
-            if st.session_state[undo_key] else "↩️ Annuler la suppression",
-            key=f"{key}_undo_delete",
-            disabled=not st.session_state[undo_key],
-            width='stretch',
-        )
-
-    if confirm_delete and to_delete_now:
+    if st.button(
+        f"🗑️ Supprimer ({len(to_delete_now)})",
+        key=f"{key}_confirm_delete",
+        disabled=not to_delete_now,
+        width='stretch',
+    ):
         try:
+            _carry_over_pending()
             snapshot = direction_df.filter(pl.col("id").is_in(to_delete_now)).to_dicts()
             for row_id in to_delete_now:
                 delete_transaction(row_id)
@@ -273,23 +274,32 @@ def _render_editable_direction(
             st.error(f"Erreur lors de la suppression : {exc}")
         return
 
-    if undo_delete and st.session_state[undo_key]:
-        try:
-            for row in st.session_state[undo_key]:
-                restore_payload = {
-                    k: v for k, v in row.items() if k not in ("id", "created_at", "is_income")
-                }
-                insert_transaction(restore_payload)
-            restored_count = len(st.session_state[undo_key])
-            st.session_state[undo_key] = []
-            invalidate_cache()
-            del st.session_state[origin_key]
-            st.session_state[version_key] += 1
-            st.toast(f"{restored_count} transaction(s) restaurée(s) ✅", icon="✅")
-            st.rerun()
-        except Exception as exc:
-            st.error(f"Erreur lors de la restauration : {exc}")
-        return
+    # Le bouton "Annuler" ne s'affiche que juste après une suppression, tant
+    # qu'elle n'a pas été remplacée par une autre — pas de bouton grisé en
+    # permanence.
+    if st.session_state[undo_key]:
+        if st.button(
+            f"↩️ Annuler la dernière suppression ({len(st.session_state[undo_key])})",
+            key=f"{key}_undo_delete",
+            width='stretch',
+        ):
+            try:
+                _carry_over_pending()
+                for row in st.session_state[undo_key]:
+                    restore_payload = {
+                        k: v for k, v in row.items() if k not in ("id", "created_at", "is_income")
+                    }
+                    insert_transaction(restore_payload)
+                restored_count = len(st.session_state[undo_key])
+                st.session_state[undo_key] = []
+                invalidate_cache()
+                del st.session_state[origin_key]
+                st.session_state[version_key] += 1
+                st.toast(f"{restored_count} transaction(s) restaurée(s) ✅", icon="✅")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Erreur lors de la restauration : {exc}")
+            return
 
     if not st.button("💾 Enregistrer", key=f"{key}_save", width='stretch'):
         return
