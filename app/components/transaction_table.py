@@ -323,19 +323,42 @@ def _render_editable_direction(
         st.session_state[pending_key] = incomplete_rows
         return
 
-    try:
-        for payload in new_rows:
+    # Chaque insert/update est isolé dans son propre try/except : un échec réseau
+    # ponctuel sur une ligne (ex. hoquet de connexion à Supabase) ne doit jamais
+    # faire échouer silencieusement les autres lignes déjà persistées avant elle
+    # — sans quoi la ligne était bel et bien enregistrée en base, mais l'écran
+    # restait figé sur l'ancien état (pas de refresh), donnant l'impression
+    # qu'elle avait disparu et poussant à la ressaisir en double.
+    inserted, updated, errors = 0, 0, []
+    for payload in new_rows:
+        try:
             insert_transaction(payload)
-        for row_id, diff in updates:
+            inserted += 1
+        except Exception as exc:
+            errors.append(f"« {payload['label']} » ({payload['date']}) : {exc}")
+    for row_id, diff in updates:
+        try:
             update_transaction(row_id, diff)
+            updated += 1
+        except Exception as exc:
+            errors.append(f"Modification {row_id} : {exc}")
+
+    if inserted or updated:
         invalidate_cache()
         del st.session_state[origin_key]
         st.session_state[pending_key] = incomplete_rows
         st.session_state[version_key] += 1
-        st.toast(
-            f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s) automatiquement ✅",
-            icon="✅",
-        )
+        if errors:
+            st.toast(
+                f"{inserted} ajoutée(s), {updated} modifiée(s) — "
+                f"{len(errors)} échec(s), voir ci-dessous ⚠️",
+                icon="⚠️",
+            )
+        else:
+            st.toast(f"{inserted} ajoutée(s), {updated} modifiée(s) automatiquement ✅", icon="✅")
         st.rerun()
-    except Exception as exc:
-        st.error(f"Erreur lors de l'enregistrement automatique : {exc}")
+    else:
+        st.session_state[pending_key] = incomplete_rows
+
+    if errors:
+        st.error("Échec de l'enregistrement automatique :\n" + "\n".join(f"- {e}" for e in errors))
