@@ -112,12 +112,12 @@ def render_editable_transactions(
 ) -> None:
     """Tableau Revenus/Dépenses éditable, avec ajout de ligne directe.
 
-    Une ligne vide reste toujours présente en tête du tableau (le plus récent
-    étant affiché en premier) : la remplir puis cliquer "Enregistrer" l'ajoute
-    comme nouvelle transaction. Le "+" natif du tableau (num_rows="dynamic")
-    reste disponible pour ajouter d'autres lignes, et le "−" natif pour en
-    supprimer ; un seul bouton "Enregistrer" par tableau persiste tout —
-    nouvelles lignes (insert), lignes modifiées (update), lignes retirées (delete).
+    Le bouton "➕ Ajouter une transaction" insère une ligne vide en tête du
+    tableau (le plus récent étant affiché en premier), remplie sur place.
+    La suppression se fait via une case "🗑️ Supprimer" par ligne (pas le "−"
+    natif du tableau, désactivé ici). Un seul bouton "Enregistrer" par
+    tableau persiste tout — nouvelles lignes (insert), lignes modifiées
+    (update), lignes cochées à supprimer (delete).
 
     Args:
         df: transactions de la période (colonnes id, date, label, amount, category,
@@ -155,10 +155,22 @@ def _render_editable_direction(
     if origin_key not in st.session_state:
         st.session_state[origin_key] = direction_df.to_dicts()
 
+    pending_key = f"{key}_pending_new"
+    if pending_key not in st.session_state:
+        st.session_state[pending_key] = []
+
+    # Ajout piloté par un bouton (pas le "+" natif, qui ajoute toujours en bas et
+    # perturbe le suivi des lignes existantes) : la nouvelle ligne vide s'insère
+    # en tête, remplie sur place, tri du plus récent au plus ancien respecté.
+    if st.button("➕ Ajouter une transaction", key=f"{key}_add_row"):
+        blank_row = {"id": None, "date": date.today(), "label": "", "amount": 0.0, "category": None}
+        if account_options:
+            blank_row["compte"] = None
+        st.session_state[pending_key].insert(0, blank_row)
+
     display_cols = [c for c in ["id", "date", "label", "amount", "category"] if c in direction_df.columns]
     working = direction_df.select(display_cols).with_columns(pl.col("amount").abs())
 
-    id_to_account_name: dict[str, str] = {}
     if account_options:
         id_to_account_name = {v: k for k, v in account_options.items()}
         account_ids = direction_df["account_id"].to_list() if "account_id" in direction_df.columns else []
@@ -166,35 +178,31 @@ def _render_editable_direction(
             pl.Series("compte", [id_to_account_name.get(a) for a in account_ids])
         )
 
+    if st.session_state[pending_key]:
+        pending_df = pl.DataFrame(st.session_state[pending_key], schema=working.schema)
+        working = pl.concat([pending_df, working], how="diagonal_relaxed")
+
+    working = working.with_columns(pl.lit(False).alias("Supprimer"))
+
     column_config: dict = {
         "id": None,
         "date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
         "label": st.column_config.TextColumn("Libellé", width="large"),
         "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €", min_value=0.0),
         "category": st.column_config.SelectboxColumn("Catégorie", options=categories, required=False),
+        "Supprimer": st.column_config.CheckboxColumn("🗑️ Supprimer"),
     }
     if account_options:
         column_config["compte"] = st.column_config.SelectboxColumn(
             "Compte", options=list(account_options.keys()), required=False
         )
 
-    # Le "+" natif de Streamlit ajoute toujours une ligne en bas du tableau — pas
-    # adapté à un tri du plus récent au plus ancien. Une ligne vide reste donc
-    # toujours présente en tête, prête à remplir pour une nouvelle transaction.
-    blank_row = {"id": None, "date": date.today(), "label": "", "amount": 0.0, "category": None}
-    if account_options:
-        blank_row["compte"] = None
-    blank_df = pl.DataFrame([blank_row], schema=working.schema)
-    working = pl.concat([blank_df, working], how="diagonal_relaxed")
-
-    st.caption("La première ligne est toujours vide — remplis-la pour ajouter une transaction.")
-
     edited = st.data_editor(
         working,
         key=f"{key}_editor",
         width='stretch',
         hide_index=True,
-        num_rows="dynamic",
+        num_rows="fixed",
         disabled=["id"],
         column_config=column_config,
     )
@@ -205,12 +213,11 @@ def _render_editable_direction(
         return
 
     origin_map = {row["id"]: row for row in st.session_state[origin_key] if row.get("id")}
-    original_ids = set(origin_map.keys())
     sign = 1.0 if direction == "income" else -1.0
 
     new_rows: list[dict] = []
     updates: list[tuple[str, dict]] = []
-    seen_ids: set[str] = set()
+    deleted_ids: list[str] = []
 
     for row in edited.iter_rows(named=True):
         row_id = row.get("id")
@@ -218,7 +225,7 @@ def _render_editable_direction(
         row_date_iso = row_date.isoformat() if hasattr(row_date, "isoformat") else row_date
 
         if row_id is None:
-            # Nouvelle ligne (ajoutée via le "+") — ignorée tant qu'elle n'est pas complète.
+            # Nouvelle ligne (ajoutée via le bouton) — ignorée tant qu'elle n'est pas complète.
             if not row.get("label") or not row_date_iso or not row.get("amount"):
                 continue
             acc = account_options.get(row.get("compte")) if account_options else account_id
@@ -232,8 +239,9 @@ def _render_editable_direction(
                 "category": row.get("category"),
                 "notes": None,
             })
+        elif row.get("Supprimer"):
+            deleted_ids.append(row_id)
         else:
-            seen_ids.add(row_id)
             orig = origin_map.get(row_id, {})
             diff: dict = {}
             if row.get("label") != orig.get("label"):
@@ -252,8 +260,6 @@ def _render_editable_direction(
             if diff:
                 updates.append((row_id, diff))
 
-    deleted_ids = original_ids - seen_ids
-
     try:
         for payload in new_rows:
             insert_transaction(payload)
@@ -263,6 +269,7 @@ def _render_editable_direction(
             delete_transaction(row_id)
         invalidate_cache()
         del st.session_state[origin_key]
+        st.session_state[pending_key] = []
         st.toast(
             f"{len(new_rows)} ajoutée(s), {len(updates)} modifiée(s), "
             f"{len(deleted_ids)} supprimée(s) ✅",
