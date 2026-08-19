@@ -7,8 +7,11 @@ import plotly.express as px
 import polars as pl
 import streamlit as st
 
+from app.components.recurring_section import render_recurring_section
 from app.components.transaction_table import render_editable_transactions
+from app.components.transfer_section import render_transfer_section
 from src.config import BusinessId
+from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
 from src.logic.revenue import (
     _MONTH_LABELS,
     aggregate_expenses_by_category,
@@ -17,19 +20,35 @@ from src.logic.revenue import (
     compute_ytd_summary,
     pivot_by_category_month,
 )
-from src.services.db_reader import read_accounts, read_categories, read_transactions
+from src.services.db_reader import (
+    invalidate_cache,
+    read_accounts,
+    read_categories,
+    read_transactions,
+)
+from src.services.supabase import bulk_update_categories, fetch_categorization_rules
 
 _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
 _MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
 
 
 def render_dashboard(business_id: BusinessId, business_name: str) -> None:
-    tab_tx, tab_monthly, tab_global = st.tabs(
-        ["🏷️ Transactions", "📅 Vue mensuelle", "📊 Vue globale"]
+    tab_tx, tab_recurring, tab_transfer, tab_monthly, tab_global = st.tabs(
+        ["🏷️ Transactions", "📅 Récurrences", "🔁 Virement", "📅 Vue mensuelle", "📊 Vue globale"]
     )
 
     with tab_tx:
         _render_transactions(business_id)
+
+    with tab_recurring:
+        st.caption(
+            "Définis un modèle une fois (loyer, abonnement...), "
+            "puis valide-le chaque mois en un clic au lieu de tout retaper."
+        )
+        render_recurring_section(key_prefix=f"biz_{business_id}", business_id_filter=str(business_id))
+
+    with tab_transfer:
+        render_transfer_section(key_prefix=f"biz_{business_id}")
 
     with tab_monthly:
         _render_monthly_view(business_id)
@@ -309,6 +328,33 @@ def _render_transactions(business_id: BusinessId) -> None:
     account_id = accounts_df["id"][0] if not accounts_df.is_empty() else None
     if account_id is None:
         st.warning("Aucun compte configuré pour cette activité — impossible d'ajouter une transaction.")
+
+    if not df.is_empty():
+        stats = categorization_stats(df)
+        if stats["pending"] > 0:
+            col_stat, col_auto = st.columns([3, 1])
+            with col_stat:
+                st.caption(
+                    f"{stats['pending']} transaction(s) sans catégorie sur {stats['total']} "
+                    f"({stats['coverage_pct']:.0f} % couvert)."
+                )
+            with col_auto:
+                if st.button("⚡ Catégoriser auto", key=f"auto_cat_{business_id}", width='stretch'):
+                    rules = fetch_categorization_rules()
+                    pending_df = get_pending_categorization(df)
+                    auto_df = apply_rules(pending_df, rules)
+                    updates = [
+                        {"id": row["id"], "category": row["category"]}
+                        for row in auto_df.iter_rows(named=True)
+                        if row.get("category")
+                    ]
+                    if updates:
+                        bulk_update_categories(updates)
+                        invalidate_cache()
+                        st.toast(f"{len(updates)} transaction(s) catégorisée(s) ✅", icon="✅")
+                        st.rerun()
+                    else:
+                        st.toast("Aucune règle ne correspond.", icon="ℹ️")
 
     render_editable_transactions(
         df,
