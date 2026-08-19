@@ -1,5 +1,6 @@
-"""Page Budget Personnel — dépenses, épargne, catégorisation."""
+"""Page Budget Personnel — transactions, récurrences, virements, vues mensuelle/globale."""
 
+import calendar
 from datetime import date
 
 import plotly.express as px
@@ -7,8 +8,8 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
-from app.components.quick_entry import render_quick_entry_form
 from app.components.recurring_section import render_recurring_section
+from app.components.transaction_table import render_editable_transactions
 from app.components.transfer_section import render_transfer_section
 from src.config import (
     PERSO_OPENING_BALANCE,
@@ -21,56 +22,153 @@ from src.logic.budget import (
     compute_budget_summary,
     compute_cumulative_balance,
 )
+from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
 from src.logic.consolidated import personal_income_from_transfers
-from src.logic.revenue import monthly_benefice
-from src.services.db_reader import read_accounts, read_transactions
+from src.logic.revenue import (
+    _MONTH_LABELS,
+    aggregate_monthly_from_df,
+    monthly_benefice,
+    pivot_by_category_month,
+)
+from src.services.db_reader import (
+    invalidate_cache,
+    read_accounts,
+    read_categories,
+    read_transactions,
+)
+from src.services.supabase import bulk_update_categories, fetch_categorization_rules
 
 st.set_page_config(page_title="Budget Perso", page_icon="💰", layout="wide")
 require_auth()
 st.title("Budget Personnel")
 
-tab_resume, tab_recurring, tab_transfer = st.tabs(
-    ["💰 Résumé", "📅 Récurrences", "🔁 Virement"]
+_SAVINGS_CATEGORY = "Épargne"
+_MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
+_MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
+
+
+def _show_pivot(pivot: pl.DataFrame) -> None:
+    """Affiche un tableau croisé avec formatage des colonnes numériques."""
+    renamed = pivot.rename({"category": "Catégorie"})
+    numeric_cols = [c for c in renamed.columns if c != "Catégorie"]
+    col_cfg = {c: st.column_config.NumberColumn(format="%.2f €") for c in numeric_cols}
+    st.dataframe(renamed.to_pandas(), width='stretch', hide_index=True, column_config=col_cfg)
+
+
+tab_tx, tab_recurring, tab_transfer, tab_monthly, tab_global = st.tabs(
+    ["🏷️ Transactions", "📅 Récurrences", "🔁 Virement", "📅 Vue mensuelle", "📊 Vue globale"]
 )
 
-with tab_resume:
-    render_quick_entry_form(str(BusinessId.PERSONAL), key_prefix="budget_perso")
+# ---------------------------------------------------------------------------
+# Onglet Transactions
+# ---------------------------------------------------------------------------
+with tab_tx:
+    today = date.today()
+    current_year = today.year
 
-    _MONTH_LABELS = {
-        1: "Jan", 2: "Fév", 3: "Mar", 4: "Avr", 5: "Mai", 6: "Jun",
-        7: "Jul", 8: "Aoû", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Déc",
+    col_y, col_m = st.columns(2)
+    with col_y:
+        tx_year: int = st.selectbox("Année", [current_year, current_year - 1], key="perso_tx_year")
+    with col_m:
+        tx_month_options: dict[str, int | None] = {"Tous": None}
+        tx_month_options.update({_MONTH_LABELS[m]: m for m in range(1, 13)})
+        tx_sel_label: str = st.selectbox("Mois", list(tx_month_options.keys()), key="perso_tx_month")
+    tx_sel_month = tx_month_options[tx_sel_label]
+
+    try:
+        tx_df = read_transactions(business_id=str(BusinessId.PERSONAL), year=tx_year, month=tx_sel_month)
+    except Exception as exc:
+        st.error(f"Impossible de charger les transactions : {exc}")
+        tx_df = pl.DataFrame()
+
+    perso_accounts_df = read_accounts(owner=str(BusinessId.PERSONAL))
+    perso_account_options = {
+        f"{a['name']} ({a.get('institution', '?')})": a["id"]
+        for a in (perso_accounts_df.sort("name").to_dicts() if not perso_accounts_df.is_empty() else [])
     }
-    _SAVINGS_CATEGORY = "Épargne"
 
-    # ---------------------------------------------------------------------------
-    # Filtres sidebar
-    # ---------------------------------------------------------------------------
+    cat_df = read_categories(business_id=str(BusinessId.PERSONAL))
+    tx_categories_by_direction = {
+        "income": sorted(cat_df.filter(pl.col("direction") == "income")["name"].to_list())
+        if not cat_df.is_empty() else [],
+        "expense": sorted(cat_df.filter(pl.col("direction") == "expense")["name"].to_list())
+        if not cat_df.is_empty() else [],
+    }
+
+    if not tx_df.is_empty():
+        stats = categorization_stats(tx_df)
+        if stats["pending"] > 0:
+            col_stat, col_auto = st.columns([3, 1])
+            with col_stat:
+                st.caption(
+                    f"{stats['pending']} transaction(s) sans catégorie sur {stats['total']} "
+                    f"({stats['coverage_pct']:.0f} % couvert)."
+                )
+            with col_auto:
+                if st.button("⚡ Catégoriser auto", key="perso_auto_cat", width='stretch'):
+                    rules = fetch_categorization_rules()
+                    pending_df = get_pending_categorization(tx_df)
+                    auto_df = apply_rules(pending_df, rules)
+                    updates = [
+                        {"id": row["id"], "category": row["category"]}
+                        for row in auto_df.iter_rows(named=True)
+                        if row.get("category")
+                    ]
+                    if updates:
+                        bulk_update_categories(updates)
+                        invalidate_cache()
+                        st.toast(f"{len(updates)} transaction(s) catégorisée(s) ✅", icon="✅")
+                        st.rerun()
+                    else:
+                        st.toast("Aucune règle ne correspond.", icon="ℹ️")
+
+    render_editable_transactions(
+        tx_df,
+        business_id=str(BusinessId.PERSONAL),
+        key="perso_tx",
+        categories_by_direction=tx_categories_by_direction,
+        account_options=perso_account_options,
+    )
+
+# ---------------------------------------------------------------------------
+# Onglet Récurrences
+# ---------------------------------------------------------------------------
+with tab_recurring:
+    st.caption(
+        "Définis un modèle une fois (loyer, abonnement, salaire...), "
+        "puis valide-le chaque mois en un clic au lieu de tout retaper."
+    )
+    render_recurring_section(key_prefix="budget_perso", business_id_filter=str(BusinessId.PERSONAL))
+
+# ---------------------------------------------------------------------------
+# Onglet Virement
+# ---------------------------------------------------------------------------
+with tab_transfer:
+    render_transfer_section(key_prefix="budget_perso")
+
+# ---------------------------------------------------------------------------
+# Onglet Vue mensuelle
+# ---------------------------------------------------------------------------
+with tab_monthly:
     with st.sidebar:
-        st.subheader("Filtres")
-        current_year = date.today().year
-        current_month = date.today().month
-        year = st.selectbox("Année", [current_year, current_year - 1], key="year_perso")
+        st.subheader("Filtres — Vue mensuelle")
+        current_year_m = date.today().year
+        current_month_m = date.today().month
+        year = st.selectbox("Année", [current_year_m, current_year_m - 1], key="year_perso")
         month_labels = list(_MONTH_LABELS.values())
-        default_month_idx = current_month - 1
+        default_month_idx = current_month_m - 1
         selected_month_label = st.selectbox(
             "Mois", month_labels, index=default_month_idx, key="month_perso"
         )
         selected_month = month_labels.index(selected_month_label) + 1
 
-    # ---------------------------------------------------------------------------
     # Mois N-1 (pour l'affichage du libellé uniquement)
-    # ---------------------------------------------------------------------------
     prev_month = selected_month - 1 if selected_month > 1 else 12
     prev_year = year if selected_month > 1 else year - 1
 
-    # ---------------------------------------------------------------------------
-    # Chargement des données
-    # ---------------------------------------------------------------------------
     try:
         df = read_transactions(
-            business_id=str(BusinessId.PERSONAL),
-            year=year,
-            month=selected_month,
+            business_id=str(BusinessId.PERSONAL), year=year, month=selected_month,
         )
         # Historique complet : nécessaire pour calculer un vrai solde cumulé
         # (et non juste "mois précédent - mois actuel").
@@ -138,9 +236,6 @@ with tab_resume:
     )
     total_fin_mois = reste_n1 + difference
 
-    # ---------------------------------------------------------------------------
-    # KPIs
-    # ---------------------------------------------------------------------------
     period_label = f"{_MONTH_LABELS[selected_month]} {year}"
     st.subheader(f"Résumé {period_label}")
 
@@ -161,76 +256,89 @@ with tab_resume:
 
     st.divider()
 
-    # ---------------------------------------------------------------------------
-    # Graphique + liste des dépenses
-    # ---------------------------------------------------------------------------
-    col_chart, col_table = st.columns([1, 2])
+    st.subheader("Répartition des dépenses")
+    breakdown = breakdown_by_category(df)
+    if not breakdown.is_empty():
+        fig = px.pie(
+            breakdown.head(10).to_pandas(),
+            values="total",
+            names="category",
+            hole=0.4,
+        )
+        fig.update_traces(textinfo="percent+label", showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Aucune dépense catégorisée sur la période.")
 
-    with col_chart:
-        breakdown = breakdown_by_category(df)
-        if not breakdown.is_empty():
-            fig = px.pie(
-                breakdown.head(10).to_pandas(),
-                values="total",
-                names="category",
-                title="Répartition des dépenses",
-                hole=0.4,
-            )
-            fig.update_traces(textinfo="percent+label", showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Aucune dépense catégorisée sur la période.")
+# ---------------------------------------------------------------------------
+# Onglet Vue globale
+# ---------------------------------------------------------------------------
+with tab_global:
+    current_year_g = date.today().year
 
-    with col_table:
-        available_cols = [c for c in ["date", "label", "amount", "category", "note"] if c in df.columns]
-
-        def _show_movements(direction_df: pl.DataFrame, empty_message: str) -> None:
-            if direction_df.is_empty():
-                st.info(empty_message)
-                return
-            st.dataframe(
-                direction_df.select(available_cols).with_columns(pl.col("amount").abs()),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "date": st.column_config.DateColumn("Date", format="DD/MM/YYYY"),
-                    "label": st.column_config.TextColumn("Libellé"),
-                    "amount": st.column_config.NumberColumn("Montant (€)", format="%.2f €"),
-                    "category": st.column_config.TextColumn("Catégorie"),
-                    "note": st.column_config.TextColumn("Note"),
-                },
-            )
-
-        tab_expenses, tab_income = st.tabs(["↓ Dépenses du mois", "↑ Revenus du mois"])
-        with tab_expenses:
-            _show_movements(
-                df.filter(pl.col("amount") < 0).sort("date", descending=True),
-                "Aucune dépense sur la période.",
-            )
-        with tab_income:
-            transfer_income_month_df = transfer_income_all.filter(
-                (pl.col("year") == year) & (pl.col("month_num") == selected_month)
-            )
-            income_extra_rows = transfer_income_month_df.select(["date", "label", "amount"]).with_columns(
-                pl.lit("Virement reçu (Booth/Épargne)").alias("category")
-            )
-            income_rows = pl.concat(
-                [
-                    df.filter(pl.col("amount") > 0).select(
-                        [c for c in ["date", "label", "amount", "category"] if c in df.columns]
-                    ),
-                    income_extra_rows,
-                ],
-                how="diagonal_relaxed",
-            ).sort("date", descending=True)
-            _show_movements(income_rows, "Aucun revenu sur la période.")
-
-with tab_recurring:
-    st.caption(
-        "Définis un modèle une fois (loyer, abonnement, salaire...), "
-        "puis valide-le chaque mois en un clic au lieu de tout retaper."
+    period_type: str = st.radio(
+        "Période", ["Année complète", "Période personnalisée"], horizontal=True, key="perso_gv_period_type",
     )
-    render_recurring_section(key_prefix="budget_perso", business_id_filter=str(BusinessId.PERSONAL))
 
-with tab_transfer:
-    render_transfer_section(key_prefix="budget_perso")
+    if period_type == "Année complète":
+        year_g: int = st.selectbox("Année", [current_year_g, current_year_g - 1], key="perso_gv_year")
+        date_from = date(year_g, 1, 1)
+        date_to = date(year_g, 12, 31)
+    else:
+        c1g, c2g, c3g, c4g = st.columns(4)
+        with c1g:
+            sm_label: str = st.selectbox("Mois début", _MONTHS_LIST, key="perso_gv_sm")
+        with c2g:
+            sy: int = st.selectbox("Année début", [current_year_g, current_year_g - 1], key="perso_gv_sy")
+        with c3g:
+            em_label: str = st.selectbox(
+                "Mois fin", _MONTHS_LIST, index=len(_MONTHS_LIST) - 1, key="perso_gv_em"
+            )
+        with c4g:
+            ey: int = st.selectbox("Année fin", [current_year_g, current_year_g - 1], key="perso_gv_ey")
+        sm, em = _MONTHS_MAP[sm_label], _MONTHS_MAP[em_label]
+        date_from = date(sy, sm, 1)
+        date_to = date(ey, em, calendar.monthrange(ey, em)[1])
+
+    try:
+        df_g = read_transactions(business_id=str(BusinessId.PERSONAL), date_from=date_from, date_to=date_to)
+    except Exception as exc:
+        st.error(f"Impossible de charger les transactions : {exc}")
+        df_g = pl.DataFrame()
+
+    if df_g.is_empty():
+        st.info("Aucune transaction sur la période sélectionnée.")
+    else:
+        st.subheader("Revenus par catégorie et par mois")
+        rev_pivot = pivot_by_category_month(df_g, "income")
+        if rev_pivot.is_empty():
+            st.info("Aucun revenu sur la période.")
+        else:
+            _show_pivot(rev_pivot)
+
+        st.divider()
+
+        st.subheader("Dépenses par catégorie et par mois")
+        exp_pivot = pivot_by_category_month(df_g, "expense")
+        if exp_pivot.is_empty():
+            st.info("Aucune dépense sur la période.")
+        else:
+            _show_pivot(exp_pivot)
+
+        st.divider()
+
+        st.subheader("Évolution revenus / dépenses")
+        monthly_g = aggregate_monthly_from_df(df_g)
+        if monthly_g["revenue"].sum() > 0 or monthly_g["expenses"].sum() > 0:
+            fig_g = px.line(
+                monthly_g.to_pandas(),
+                x="month_label",
+                y=["revenue", "expenses"],
+                labels={"month_label": "Mois", "value": "€", "variable": ""},
+                color_discrete_map={"revenue": "#2ecc71", "expenses": "#e74c3c"},
+                markers=True,
+            )
+            fig_g.update_layout(legend=dict(orientation="h", y=-0.2))
+            st.plotly_chart(fig_g, width='stretch')
+        else:
+            st.info("Pas de données pour le graphique.")
