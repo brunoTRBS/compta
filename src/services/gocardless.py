@@ -4,7 +4,7 @@ Documentation API : https://bankaccountdata.gocardless.com/api/v2/
 """
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import requests
@@ -40,7 +40,7 @@ def get_access_token() -> str:
     """
     cache = _get_cache()
     cached = cache.get(_SESSION_KEY)
-    if cached and cached["expires_at"] > datetime.now(tz=timezone.utc):
+    if cached and cached["expires_at"] > datetime.now(tz=UTC):
         return cached["access"]
 
     secret_id, secret_key = _get_credentials()
@@ -55,7 +55,7 @@ def get_access_token() -> str:
     expires_in = int(data.get("access_expires", 86400))
     cache[_SESSION_KEY] = {
         "access": data["access"],
-        "expires_at": datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in - 60),
+        "expires_at": datetime.now(tz=UTC) + timedelta(seconds=expires_in - 60),
     }
     return data["access"]
 

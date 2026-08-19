@@ -1,6 +1,5 @@
 """Tests unitaires pour le parseur CSV Boursobank."""
 
-import pytest
 
 from src.logic.statement_parser import (
     _parse_amount,

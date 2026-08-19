@@ -1,13 +1,13 @@
 """Calcul des cotisations sociales URSSAF pour micro-entrepreneur."""
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import NamedTuple
 
 from src.config import (
-    BusinessId,
     CA_THRESHOLDS,
     URSSAF_RATES,
     VERSEMENT_LIBERATOIRE_RATES,
+    BusinessId,
 )
 
 

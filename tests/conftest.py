@@ -3,6 +3,7 @@
 import sys
 from unittest.mock import MagicMock
 
+
 # ---------------------------------------------------------------------------
 # Stubs pour les packages tiers non installés dans l'environnement de test pur.
 # Les modules src/services/ les importent au niveau module ; ces stubs évitent
@@ -33,12 +34,12 @@ if "stripe" not in sys.modules:
     _stripe = MagicMock()
     sys.modules["stripe"] = _stripe
 
-import pytest
-from datetime import date
+from datetime import date  # noqa: E402
 
-import polars as pl
+import polars as pl  # noqa: E402
+import pytest  # noqa: E402
 
-from src.config import BusinessId, TransactionSource
+from src.config import BusinessId, TransactionSource  # noqa: E402
 
 
 @pytest.fixture

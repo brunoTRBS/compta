@@ -1,6 +1,7 @@
+from datetime import date
+
 import polars as pl
 import pytest
-from datetime import date
 
 from src.logic.recurring import default_materialize_date, due_templates
 

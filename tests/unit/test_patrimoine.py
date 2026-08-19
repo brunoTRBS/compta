@@ -1,6 +1,7 @@
+from datetime import date
+
 import polars as pl
 import pytest
-from datetime import date
 
 from src.logic.patrimoine import (
     aggregate_by_account_type,

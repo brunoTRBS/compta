@@ -1,6 +1,5 @@
 """Tests unitaires du pipeline d'import (appels Supabase mockés)."""
 
-import pytest
 from unittest.mock import patch
 
 from src.logic.import_pipeline import (

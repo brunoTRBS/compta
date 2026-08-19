@@ -2,7 +2,12 @@ import polars as pl
 import pytest
 
 from src.config import BusinessId
-from src.logic.revenue import aggregate_monthly, compute_net_margin, compute_ytd_summary, monthly_benefice
+from src.logic.revenue import (
+    aggregate_monthly,
+    compute_net_margin,
+    compute_ytd_summary,
+    monthly_benefice,
+)
 
 
 class TestAggregateMonthly:
@@ -85,6 +90,7 @@ class TestComputeYtdSummary:
         assert summary["stripe_fees"] == pytest.approx(25.0)
         assert summary["ca_for_urssaf"] == pytest.approx(1475.0)
         from decimal import Decimal
+
         from src.config import URSSAF_RATES
         expected_cotisations = float((Decimal("1475.0") * URSSAF_RATES[BusinessId.PHI_RISING]).quantize(Decimal("0.01")))
         assert summary["cotisations"] == pytest.approx(expected_cotisations)
@@ -123,8 +129,8 @@ class TestComputeYtdSummary:
         assert summary["cotisations"] > 0
 
     def test_empty_dataframe_returns_zeros(self):
+
         import polars as pl
-        from datetime import date
 
         empty_df = pl.DataFrame({
             "id": pl.Series([], dtype=pl.Utf8),

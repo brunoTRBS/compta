@@ -1,5 +1,4 @@
 import polars as pl
-import pytest
 
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
 
@@ -40,8 +39,6 @@ class TestApplyRules:
     def test_does_not_overwrite_existing_category(self, sample_transactions):
         # sample_transactions a déjà des catégories
         result = apply_rules(sample_transactions, RULES)
-        original_cats = sample_transactions["category"].to_list()
-        result_cats = result.sort("label")["category"].to_list()
         # Juste vérifier que les catégories existantes sont préservées
         assert len(result) == len(sample_transactions)
 

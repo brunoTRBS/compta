@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 import streamlit as st
+
 from supabase import Client, create_client
 
 

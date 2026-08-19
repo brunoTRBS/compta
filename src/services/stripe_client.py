@@ -4,8 +4,8 @@ import os
 from datetime import datetime
 from typing import Any
 
-import stripe
 import streamlit as st
+import stripe
 
 
 def _get_stripe_key() -> str:

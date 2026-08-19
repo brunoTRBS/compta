@@ -1,17 +1,17 @@
 """Agrégations de revenus et calcul de la marge nette via Polars."""
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 import polars as pl
 
 from src.config import (
-    BusinessId,
     CA_THRESHOLDS,
     TVA_FRANCHISE_THRESHOLDS,
     URSSAF_RATES,
     URSSAF_RATES_BY_CATEGORY,
     VERSEMENT_LIBERATOIRE_RATES,
+    BusinessId,
 )
 
 _MONTH_LABELS: dict[int, str] = {

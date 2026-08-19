@@ -1,7 +1,8 @@
-import pytest
 from decimal import Decimal
 
-from src.config import BusinessId, CA_THRESHOLDS, URSSAF_RATES
+import pytest
+
+from src.config import CA_THRESHOLDS, URSSAF_RATES, BusinessId
 from src.logic.urssaf import UrssafResult, compute_cotisations, compute_quarterly_estimate
 
 

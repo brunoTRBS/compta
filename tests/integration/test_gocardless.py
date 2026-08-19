@@ -1,9 +1,9 @@
 """Tests d'intégration GoCardless — tous les appels HTTP sont mockés."""
 
-import pytest
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Tests : map_transaction (fonction pure, aucun mock requis)
@@ -195,7 +195,7 @@ class TestGetAccessToken:
         mock_get_cache.return_value = {
             "_gc_token": {
                 "access": "cached-token",
-                "expires_at": datetime.now(tz=timezone.utc) + timedelta(hours=1),
+                "expires_at": datetime.now(tz=UTC) + timedelta(hours=1),
             }
         }
 

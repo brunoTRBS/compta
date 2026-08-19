@@ -1,6 +1,7 @@
+from datetime import date
+
 import polars as pl
 import pytest
-from datetime import date
 
 from src.logic.budget import (
     breakdown_by_category,

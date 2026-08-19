@@ -1,7 +1,6 @@
 """Tests unitaires du service Supabase (client mocké)."""
 
-import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 
 def _make_supabase_mock(return_data: list | None = None) -> MagicMock:
@@ -93,7 +92,6 @@ class TestUpdateTransaction:
         update_transaction("tx-1", {"id": "tx-1", "created_at": "..."})
 
         # Tous les champs étaient immutables → dict vide passé à update()
-        from src.services.supabase import get_supabase
         mock_get.return_value.table.return_value.update.assert_called_once_with({})
 
 

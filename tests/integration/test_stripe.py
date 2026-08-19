@@ -1,9 +1,9 @@
 """Tests d'intégration Stripe — tous les appels API sont mockés."""
 
-import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Tests : map_payment_intent (fonction pure, aucun mock requis)
