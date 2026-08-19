@@ -22,11 +22,14 @@ def render_editable_transactions(
 
     Le bouton "➕ Ajouter une transaction" insère une ligne vide en tête du
     tableau (le plus récent étant affiché en premier), remplie sur place.
-    Toute modification (nouvelle ligne complète, ou changement sur une ligne
-    existante) est sauvegardée automatiquement dès qu'elle est détectée, sans
-    bouton à cliquer. La suppression reste volontaire : case "🗑️ Supprimer"
-    par ligne (pas le "−" natif du tableau, désactivé ici) + bouton de
-    confirmation, pour ne jamais supprimer une transaction en un seul clic.
+    La suppression se fait via une case "🗑️ Supprimer" par ligne (pas le "−"
+    natif du tableau, désactivé ici) + bouton de confirmation, immédiate (pas
+    besoin d'Enregistrer). L'ajout/la modification, eux, passent par un seul
+    bouton "Enregistrer" groupé (pas à chaque frappe : un appel réseau par
+    caractère tapé ralentit tout et peut se faire doubler par la frappe
+    suivante). Une ligne incomplète au clic (libellé/date/montant manquant)
+    n'est jamais effacée en silence : elle reste affichée avec un message
+    expliquant ce qu'il manque.
 
     Args:
         df: transactions de la période (colonnes id, date, label, amount, category,
@@ -252,11 +255,14 @@ def _render_editable_direction(
                 st.error(f"Erreur lors de la restauration : {exc}")
             return
 
-    # Sauvegarde automatique : dès qu'une ligne existante change ou qu'une nouvelle
-    # ligne est complète (libellé + date + montant), elle est persistée directement,
-    # sans bouton "Enregistrer" à cliquer — chaque modification dans le tableau
-    # déclenche de toute façon un rerun de Streamlit, donc cette fonction s'exécute
-    # à nouveau et détecte le changement.
+    # Un bouton explicite (pas de sauvegarde à chaque frappe) : Streamlit relance
+    # toute la page à chaque édition de cellule, et un appel réseau Supabase à
+    # chaque frappe ralentissait tout et pouvait se faire doubler par la frappe
+    # suivante avant d'avoir fini (écran incohérent, pertes de saisie). Un seul
+    # appel groupé au clic est plus rapide et plus fiable.
+    if not st.button("💾 Enregistrer", key=f"{key}_save", width='stretch'):
+        return
+
     origin_map = {row["id"]: row for row in st.session_state[origin_key] if row.get("id")}
     sign = 1.0 if direction == "income" else -1.0
 
@@ -270,14 +276,13 @@ def _render_editable_direction(
         row_date_iso = row_date.isoformat() if hasattr(row_date, "isoformat") else row_date
 
         if row_id is None:
-            # Nouvelle ligne (ajoutée via le bouton "➕") — jamais auto-sauvegardée
-            # si l'utilisateur vient de la cocher pour suppression.
+            # Nouvelle ligne (ajoutée via le bouton "➕") — jamais enregistrée si
+            # l'utilisateur vient de la cocher pour suppression.
             if row.get("Supprimer"):
                 continue
             if not row.get("label") or not row_date_iso or not row.get("amount"):
-                # Incomplète tant que libellé/date/montant ne sont pas tous les 3
-                # remplis : gardée en attente (jamais effacée en silence) jusqu'à
-                # ce qu'elle le devienne, moment où elle est auto-sauvegardée.
+                # Incomplète : gardée en attente (jamais effacée en silence),
+                # avec un message expliquant ce qu'il manque.
                 has_content = bool((row.get("label") or "").strip()) or bool(row.get("amount")) or row.get("category")
                 if has_content:
                     kept = {k: v for k, v in row.items() if k != "Supprimer"}
@@ -316,11 +321,14 @@ def _render_editable_direction(
                 updates.append((row_id, diff))
 
     if not new_rows and not updates:
-        # Rien de complet à sauvegarder ce coup-ci (juste une ligne en cours de
-        # remplissage, ou aucun changement) : pas de rerun, pour ne pas couper
-        # la saisie en cours. La liste des lignes en attente est mise à jour
-        # discrètement, sans forcer un nouveau widget.
+        # Rien de complet à enregistrer (ligne(s) incomplète(s) et/ou aucune
+        # modification) : on prévient plutôt que de faire disparaître la saisie.
         st.session_state[pending_key] = incomplete_rows
+        if incomplete_rows:
+            st.warning(
+                f"{len(incomplete_rows)} ligne(s) incomplète(s) — "
+                "libellé, date et montant sont obligatoires."
+            )
         return
 
     # Chaque insert/update est isolé dans son propre try/except : un échec réseau
@@ -355,10 +363,10 @@ def _render_editable_direction(
                 icon="⚠️",
             )
         else:
-            st.toast(f"{inserted} ajoutée(s), {updated} modifiée(s) automatiquement ✅", icon="✅")
+            st.toast(f"{inserted} ajoutée(s), {updated} modifiée(s) ✅", icon="✅")
         st.rerun()
     else:
         st.session_state[pending_key] = incomplete_rows
 
     if errors:
-        st.error("Échec de l'enregistrement automatique :\n" + "\n".join(f"- {e}" for e in errors))
+        st.error("Échec de l'enregistrement :\n" + "\n".join(f"- {e}" for e in errors))
