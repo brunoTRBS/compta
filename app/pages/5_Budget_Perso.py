@@ -203,21 +203,27 @@ with tab_monthly:
         if not transfer_income_all.is_empty()
         else pl.DataFrame(schema={"year": pl.Int32, "month_num": pl.Int32, "benefice": pl.Float64})
     )
-    combined_extra_monthly = (
-        pl.concat([phi_monthly, transfer_income_monthly], how="diagonal_relaxed")
-        .group_by(["year", "month_num"])
-        .agg(pl.col("benefice").sum())
-    )
-
     # Virements Compte perso/commun → Livret épargne : un simple mouvement interne (ne
-    # change pas le patrimoine total, donc jamais compté en revenu ni en dépense — voir
-    # ci-dessus), mais qui doit apparaître dans la ligne "Épargne" puisque c'est bien de
-    # l'argent mis de côté ce mois-ci.
+    # change pas le patrimoine total, voir personal_savings_transfers), mais qui rend cet
+    # argent indisponible pour le reste — il doit donc réduire le solde cumulé "Reste"/
+    # "Total fin du mois" exactement comme une dépense, tout en restant affiché à part
+    # dans la ligne "Épargne" plutôt que dans "Dépenses".
     savings_transfer_all = personal_savings_transfers(all_tx_with_transfers, accounts_df)
     savings_transfer_monthly = (
         savings_transfer_all.group_by(["year", "month_num"]).agg(pl.col("amount").sum().alias("montant"))
         if not savings_transfer_all.is_empty()
         else pl.DataFrame(schema={"year": pl.Int32, "month_num": pl.Int32, "montant": pl.Float64})
+    )
+    savings_transfer_as_negative_benefice = savings_transfer_monthly.select(
+        "year", "month_num", (-pl.col("montant")).alias("benefice")
+    )
+    combined_extra_monthly = (
+        pl.concat(
+            [phi_monthly, transfer_income_monthly, savings_transfer_as_negative_benefice],
+            how="diagonal_relaxed",
+        )
+        .group_by(["year", "month_num"])
+        .agg(pl.col("benefice").sum())
     )
 
     def _amount_for_month(monthly_df: pl.DataFrame, target_year: int, target_month: int, col: str) -> float:
@@ -242,7 +248,9 @@ with tab_monthly:
     savings = savings_category_month + savings_transfer_month
     expenses_excl_savings = summary["expenses"] - savings_category_month
     adjusted_income = summary["income"] + phi_benefice_month + transfer_income_month
-    difference = adjusted_income - summary["expenses"]
+    # savings_transfer_month réduit la différence (argent parti sur le Livret, donc plus
+    # disponible) sans être compté dans "Dépenses" (déjà affiché séparément ci-dessus).
+    difference = adjusted_income - summary["expenses"] - savings_transfer_month
 
     # Solde d'ouverture : le suivi a commencé en mai 2025, avec un reste réel non nul fin
     # avril 2025 — ne s'applique donc qu'à partir du premier mois suivi.
