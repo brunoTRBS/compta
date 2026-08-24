@@ -11,8 +11,16 @@ Usage : appeler require_auth() en tête de chaque page.
 import time
 
 import streamlit as st
-from gotrue.errors import AuthApiError
-from streamlit_cookies_manager import EncryptedCookieManager
+
+# streamlit-cookies-manager (non maintenu) utilise encore le décorateur `st.cache`,
+# retiré de Streamlit depuis. Sans ce correctif de compatibilité, son import plante
+# au démarrage de l'appli avec une AttributeError. `st.cache_data` est un
+# remplacement direct valide ici : la fonction décorée est pure (dérivation de clé).
+if not hasattr(st, "cache"):
+    st.cache = st.cache_data
+
+from gotrue.errors import AuthApiError  # noqa: E402
+from streamlit_cookies_manager import EncryptedCookieManager  # noqa: E402
 
 from src.services.supabase import get_supabase
 
