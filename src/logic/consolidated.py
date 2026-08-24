@@ -146,3 +146,57 @@ def personal_income_from_transfers(tx_df: pl.DataFrame, accounts_df: pl.DataFram
         pl.col("date").dt.year().alias("year"),
         pl.col("date").dt.month().alias("month_num"),
     )
+
+
+def personal_savings_transfers(tx_df: pl.DataFrame, accounts_df: pl.DataFrame) -> pl.DataFrame:
+    """Virements Perso → compte d'épargne, à traiter comme de l'épargne du mois.
+
+    Un virement du compte courant vers le Livret est un simple mouvement interne
+    (jamais une dépense ni un revenu, voir pair_transfers), mais représente bien de
+    l'argent mis de côté ce mois-ci — la ligne "Épargne" du budget doit le refléter.
+
+    Args:
+        tx_df: transactions, virements inclus (include_transfers=True).
+        accounts_df: comptes actifs (colonnes id, owner, type).
+
+    Returns:
+        DataFrame : date, label, amount (positif), transfer_group_id, year, month_num.
+        Vide si aucun virement éligible.
+    """
+    if tx_df.is_empty() or accounts_df.is_empty():
+        return pl.DataFrame(schema=_PERSONAL_INCOME_SCHEMA)
+
+    transfers = tx_df.filter(pl.col("is_transfer"))
+    if transfers.is_empty():
+        return pl.DataFrame(schema=_PERSONAL_INCOME_SCHEMA)
+
+    from_legs = (
+        transfers.filter(pl.col("amount") < 0)
+        .join(
+            accounts_df.select(["id", "owner"]).rename({"id": "account_id", "owner": "from_owner"}),
+            on="account_id", how="left",
+        )
+        .filter(pl.col("from_owner") == "personal")
+    )
+    to_legs = (
+        transfers.filter(pl.col("amount") > 0)
+        .join(
+            accounts_df.select(["id", "type"]).rename({"id": "account_id", "type": "to_type"}),
+            on="account_id", how="left",
+        )
+        .select(["transfer_group_id", "to_type"])
+    )
+
+    eligible = (
+        from_legs.join(to_legs, on="transfer_group_id", how="left")
+        .filter(pl.col("to_type") == "savings")
+        .with_columns(pl.col("amount").abs())
+    )
+
+    if eligible.is_empty():
+        return pl.DataFrame(schema=_PERSONAL_INCOME_SCHEMA)
+
+    return eligible.select(["date", "label", "amount", "transfer_group_id"]).with_columns(
+        pl.col("date").dt.year().alias("year"),
+        pl.col("date").dt.month().alias("month_num"),
+    )

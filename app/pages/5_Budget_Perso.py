@@ -23,7 +23,7 @@ from src.logic.budget import (
     compute_cumulative_balance,
 )
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
-from src.logic.consolidated import personal_income_from_transfers
+from src.logic.consolidated import personal_income_from_transfers, personal_savings_transfers
 from src.logic.revenue import (
     _MONTH_LABELS,
     aggregate_monthly_from_df,
@@ -209,6 +209,17 @@ with tab_monthly:
         .agg(pl.col("benefice").sum())
     )
 
+    # Virements Compte perso/commun → Livret épargne : un simple mouvement interne (ne
+    # change pas le patrimoine total, donc jamais compté en revenu ni en dépense — voir
+    # ci-dessus), mais qui doit apparaître dans la ligne "Épargne" puisque c'est bien de
+    # l'argent mis de côté ce mois-ci.
+    savings_transfer_all = personal_savings_transfers(all_tx_with_transfers, accounts_df)
+    savings_transfer_monthly = (
+        savings_transfer_all.group_by(["year", "month_num"]).agg(pl.col("amount").sum().alias("montant"))
+        if not savings_transfer_all.is_empty()
+        else pl.DataFrame(schema={"year": pl.Int32, "month_num": pl.Int32, "montant": pl.Float64})
+    )
+
     def _amount_for_month(monthly_df: pl.DataFrame, target_year: int, target_month: int, col: str) -> float:
         row = monthly_df.filter(
             (pl.col("year") == target_year) & (pl.col("month_num") == target_month)
@@ -223,8 +234,13 @@ with tab_monthly:
 
     phi_benefice_month = _amount_for_month(phi_monthly, year, selected_month, "benefice")
     transfer_income_month = _amount_for_month(transfer_income_monthly, year, selected_month, "benefice")
-    savings = _savings_amount(df)
-    expenses_excl_savings = summary["expenses"] - savings
+    savings_category_month = _savings_amount(df)
+    savings_transfer_month = _amount_for_month(savings_transfer_monthly, year, selected_month, "montant")
+    # Seule la part "catégorie Épargne" (une dépense normale) est déjà comptée dans
+    # summary["expenses"] : on ne retranche qu'elle, pas la part "virement" qui n'y
+    # a jamais été incluse (les virements sont exclus de summary par construction).
+    savings = savings_category_month + savings_transfer_month
+    expenses_excl_savings = summary["expenses"] - savings_category_month
     adjusted_income = summary["income"] + phi_benefice_month + transfer_income_month
     difference = adjusted_income - summary["expenses"]
 
@@ -252,6 +268,7 @@ with tab_monthly:
     )
     c2.metric("Dépenses", f"{expenses_excl_savings:,.2f} €")
     c3.metric("Épargne", f"{savings:,.2f} €")
+    c3.caption(f"dont {savings_transfer_month:,.2f} € viré vers le Livret")
     c4.metric("Différence", f"{difference:,.2f} €", delta=f"{difference:+,.2f} €" if difference != 0 else None)
     c5.metric(
         f"Reste {_MONTH_LABELS[prev_month]} {prev_year}",

@@ -3,7 +3,12 @@ from datetime import date
 import polars as pl
 import pytest
 
-from src.logic.consolidated import flows_per_account, pair_transfers, personal_income_from_transfers
+from src.logic.consolidated import (
+    flows_per_account,
+    pair_transfers,
+    personal_income_from_transfers,
+    personal_savings_transfers,
+)
 
 
 @pytest.fixture
@@ -160,4 +165,63 @@ class TestPersonalIncomeFromTransfers:
     def test_empty_accounts_returns_empty(self, transfer_scenarios):
         empty = pl.DataFrame(schema={"id": pl.Utf8, "owner": pl.Utf8, "type": pl.Utf8})
         result = personal_income_from_transfers(transfer_scenarios, empty)
+        assert result.is_empty()
+
+
+@pytest.fixture
+def savings_transfer_scenarios():
+    """4 virements : Perso→Livret (éligible), Livret→Perso/Phi→Perso/Perso→Commun (non)."""
+    return pl.DataFrame({
+        "transfer_group_id": ["tg-save", "tg-save", "tg-livret", "tg-livret", "tg-phi", "tg-phi", "tg-interne", "tg-interne"],
+        "date": pl.Series([date(2024, 6, 1)] * 8, dtype=pl.Date),
+        "label": [
+            "Vers Livret", "Vers Livret",
+            "Désépargne", "Désépargne",
+            "Reversement Phi", "Reversement Phi",
+            "Perso vers commun", "Perso vers commun",
+        ],
+        "amount": pl.Series([-100.0, 100.0, -50.0, 50.0, -300.0, 300.0, -80.0, 80.0], dtype=pl.Float64),
+        "account_id": [
+            "acc-perso", "acc-livret",
+            "acc-livret", "acc-perso",
+            "acc-coaching", "acc-perso",
+            "acc-perso", "acc-commun",
+        ],
+        "is_transfer": [True] * 8,
+    })
+
+
+class TestPersonalSavingsTransfers:
+    def test_perso_to_livret_is_eligible(self, sample_accounts, savings_transfer_scenarios):
+        result = personal_savings_transfers(savings_transfer_scenarios, sample_accounts)
+        assert "tg-save" in result["transfer_group_id"].to_list()
+
+    def test_livret_to_perso_excluded(self, sample_accounts, savings_transfer_scenarios):
+        result = personal_savings_transfers(savings_transfer_scenarios, sample_accounts)
+        assert "tg-livret" not in result["transfer_group_id"].to_list()
+
+    def test_phi_rising_to_perso_excluded(self, sample_accounts, savings_transfer_scenarios):
+        result = personal_savings_transfers(savings_transfer_scenarios, sample_accounts)
+        assert "tg-phi" not in result["transfer_group_id"].to_list()
+
+    def test_perso_to_perso_current_excluded(self, sample_accounts, savings_transfer_scenarios):
+        result = personal_savings_transfers(savings_transfer_scenarios, sample_accounts)
+        assert "tg-interne" not in result["transfer_group_id"].to_list()
+
+    def test_only_one_eligible_row(self, sample_accounts, savings_transfer_scenarios):
+        result = personal_savings_transfers(savings_transfer_scenarios, sample_accounts)
+        assert result.shape[0] == 1
+
+    def test_amount_is_positive(self, sample_accounts, savings_transfer_scenarios):
+        result = personal_savings_transfers(savings_transfer_scenarios, sample_accounts)
+        assert result["amount"][0] == pytest.approx(100.0)
+
+    def test_empty_transactions_returns_empty(self, sample_accounts):
+        empty = pl.DataFrame(schema={"is_transfer": pl.Boolean})
+        result = personal_savings_transfers(empty, sample_accounts)
+        assert result.is_empty()
+
+    def test_empty_accounts_returns_empty(self, savings_transfer_scenarios):
+        empty = pl.DataFrame(schema={"id": pl.Utf8, "owner": pl.Utf8, "type": pl.Utf8})
+        result = personal_savings_transfers(savings_transfer_scenarios, empty)
         assert result.is_empty()
