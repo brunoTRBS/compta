@@ -79,7 +79,7 @@ def read_transactions(
     data = q.order("date", desc=True).limit(_TXN_LIMIT).execute().data
     if not data:
         return pl.DataFrame(schema=_TXN_SCHEMA)
-    return _cast_transactions(pl.DataFrame(data))
+    return _cast_transactions(pl.DataFrame(data, infer_schema_length=None))
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -96,7 +96,7 @@ def read_accounts(owner: str | None = None) -> pl.DataFrame:
     data = q.order("name").execute().data
     if not data:
         return pl.DataFrame()
-    return pl.DataFrame(data)
+    return pl.DataFrame(data, infer_schema_length=None)
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -113,7 +113,7 @@ def read_account_balance_history(account_id: str) -> pl.DataFrame:
     )
     if not data:
         return pl.DataFrame(schema={"id": pl.Utf8, "date": pl.Date, "balance": pl.Float64})
-    return pl.DataFrame(data).with_columns(
+    return pl.DataFrame(data, infer_schema_length=None).with_columns(
         pl.col("date").cast(pl.Date),
         pl.col("balance").cast(pl.Float64),
     )
@@ -136,7 +136,7 @@ def read_monthly_revenue(business_id: str, year: int) -> pl.DataFrame:
     if not data:
         return pl.DataFrame(schema={"month": pl.Int32, "revenue": pl.Float64})
     return (
-        pl.DataFrame(data)
+        pl.DataFrame(data, infer_schema_length=None)
         .with_columns(
             pl.col("date").cast(pl.Date),
             pl.col("amount").cast(pl.Float64),
@@ -176,7 +176,7 @@ def read_category_breakdown(
     if not data:
         return pl.DataFrame(schema={"category": pl.Utf8, "total": pl.Float64, "count": pl.Int32})
     return (
-        pl.DataFrame(data)
+        pl.DataFrame(data, infer_schema_length=None)
         .with_columns(
             pl.col("category").fill_null("non classé"),
             pl.col("amount").cast(pl.Float64),
@@ -240,7 +240,7 @@ def read_categories(business_id: str | None = None) -> pl.DataFrame:
     data = q.order("direction").order("name").execute().data
     if not data:
         return pl.DataFrame()
-    return pl.DataFrame(data)
+    return pl.DataFrame(data, infer_schema_length=None)
 
 
 @st.cache_data(ttl=_CACHE_TTL)
@@ -263,7 +263,7 @@ def read_recurring_transactions() -> pl.DataFrame:
     }
     if not data:
         return pl.DataFrame(schema=_SCHEMA)
-    return pl.DataFrame(data).with_columns(
+    return pl.DataFrame(data, infer_schema_length=None).with_columns(
         pl.col("amount").cast(pl.Float64),
         pl.col("day_of_month").cast(pl.Int32),
         pl.col("is_active").cast(pl.Boolean),
