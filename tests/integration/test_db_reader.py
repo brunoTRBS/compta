@@ -40,6 +40,9 @@ _TX_ROW = {
     "account_id": "acc-1",
     "is_transfer": False,
     "transfer_group_id": None,
+    "is_household": False,
+    "needs_review": False,
+    "raw_label": None,
 }
 
 
@@ -55,6 +58,20 @@ class TestReadTransactions:
             result = db_reader.read_transactions()
             assert isinstance(result, pl.DataFrame)
             assert result.shape[0] == 1
+
+    def test_excludes_household_by_default(self):
+        client = _chain_mock([_TX_ROW])
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            db_reader.read_transactions()
+            client.eq.assert_any_call("is_household", False)
+
+    def test_include_household_skips_filter(self):
+        client = _chain_mock([_TX_ROW])
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            db_reader.read_transactions(include_household=True)
+            assert ("is_household", False) not in [c.args for c in client.eq.call_args_list]
 
     def test_empty_returns_typed_schema(self):
         client = _chain_mock([])

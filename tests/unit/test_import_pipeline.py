@@ -258,3 +258,12 @@ class TestRunFullPipelineWithManual:
         mock_link.assert_called_once()
         inserted = mock_upsert.call_args[0][0]
         assert [t["external_id"] for t in inserted] == ["b"]
+
+
+def test_match_ignores_account_when_bank_side_has_none():
+    """Participation : la saisie manuelle peut être rattachée à n'importe quel compte perso."""
+    _, links = match_manual_entries(
+        [_bank(-950.0, 8, account=None)], [_manual("m1", -950.0, 1, account="acc-perso")],
+        window_days=10,
+    )
+    assert links[0]["id"] == "m1"

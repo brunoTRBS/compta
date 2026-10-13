@@ -19,7 +19,7 @@ _CACHE_TTL = 300
 
 _TXN_COLS = (
     "id,date,amount,label,source,business_id,category,is_income,external_id,created_at,"
-    "account_id,is_transfer,transfer_group_id"
+    "account_id,is_transfer,transfer_group_id,is_household,needs_review,raw_label"
 )
 _TXN_LIMIT = 50_000
 
@@ -37,6 +37,9 @@ _TXN_SCHEMA: dict[str, type[pl.DataType]] = {
     "account_id": pl.Utf8,
     "is_transfer": pl.Boolean,
     "transfer_group_id": pl.Utf8,
+    "is_household": pl.Boolean,
+    "needs_review": pl.Boolean,
+    "raw_label": pl.Utf8,
 }
 
 
@@ -48,6 +51,7 @@ def read_transactions(
     date_from: Date | None = None,
     date_to: Date | None = None,
     include_transfers: bool = False,
+    include_household: bool = False,
 ) -> pl.DataFrame:
     """Lit les transactions via Supabase REST. Retourne un DataFrame Polars typé.
 
@@ -55,6 +59,10 @@ def read_transactions(
     représentent jamais du CA, une dépense ou une base URSSAF, seulement un
     déplacement d'argent entre deux comptes. Passer include_transfers=True
     pour les vues qui suivent l'argent compte par compte (ex : Vue consolidée).
+
+    Exclut aussi les opérations du foyer (is_household=true, compte commun) : elles
+    sont couvertes par la participation mensuelle et n'appartiennent pas au budget
+    perso. Passer include_household=True pour les voir.
     """
     q = get_supabase().table("transactions").select(_TXN_COLS)
 
@@ -63,6 +71,9 @@ def read_transactions(
 
     if not include_transfers:
         q = q.eq("is_transfer", False)
+
+    if not include_household:
+        q = q.eq("is_household", False)
 
     if date_from is not None:
         q = q.gte("date", date_from.isoformat())
@@ -288,5 +299,8 @@ def _cast_transactions(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("amount").cast(pl.Float64),
         pl.col("is_income").cast(pl.Boolean),
         pl.col("is_transfer").cast(pl.Boolean),
+        pl.col("is_household").cast(pl.Boolean),
+        pl.col("needs_review").cast(pl.Boolean),
+        pl.col("raw_label").cast(pl.Utf8),
         pl.col("created_at").str.to_datetime(time_unit="us", time_zone="UTC"),
     )

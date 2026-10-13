@@ -236,4 +236,6 @@ def map_statement_transaction(
         "external_id": raw.get("external_id")
         or build_external_id(raw["date"], raw["amount"], raw["label"]),
         "notes": None,
+        "is_household": False,
+        "needs_review": False,
     }

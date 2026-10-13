@@ -8,7 +8,14 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
-from src.config import JOINT_ACCOUNT_NAME, BusinessId
+from src.config import JOINT_ACCOUNT_NAME, PARTICIPATION_LABEL, BusinessId
+from src.logic.household import (
+    KIND_CARD,
+    classify_joint_transactions,
+    default_counts_in_budget,
+    resolve_review,
+    review_kind,
+)
 from src.logic.import_pipeline import (
     MANUAL_MATCH_WINDOW_DAYS,
     deduplicate,
@@ -23,7 +30,13 @@ from src.logic.statement_parser import (
 )
 from src.services.db_reader import invalidate_cache, read_transactions
 from src.services.stripe_client import fetch_payment_intents, map_payment_intent
-from src.services.supabase import fetch_accounts, update_account_bank_number
+from src.services.supabase import (
+    apply_household_review,
+    bulk_upsert_transactions,
+    fetch_accounts,
+    link_transactions_to_bank,
+    update_account_bank_number,
+)
 
 st.set_page_config(page_title="Synchronisation", page_icon="🔄", layout="wide")
 require_auth()
@@ -33,6 +46,10 @@ st.caption("Importe les relevés bancaires (CSV BoursoBank, Crédit Mutuel) et l
 _BANK_LABELS = {BANK_BOURSOBANK: "BoursoBank"}
 _BANK_LABEL_DEFAULT = "Crédit Mutuel"
 
+# La participation peut être saisie à la main n'importe quand dans le mois :
+# fenêtre plus large que pour un paiement carte.
+_PARTICIPATION_MATCH_WINDOW_DAYS = 10
+
 _STRIPE_BUSINESS_MAP = {
     "Phi Rising": str(BusinessId.PHI_RISING),
     "Booth in Lyon": str(BusinessId.BOOTH_IN_LYON),
@@ -40,9 +57,9 @@ _STRIPE_BUSINESS_MAP = {
 
 
 def _get_existing_ids() -> set[str]:
-    """Récupère tous les external_id déjà en base (virements compris) pour la déduplication."""
+    """Récupère tous les external_id déjà en base (virements et foyer compris) pour la déduplication."""
     try:
-        df = read_transactions(include_transfers=True)
+        df = read_transactions(include_transfers=True, include_household=True)
         if df.is_empty() or "external_id" not in df.columns:
             return set()
         return set(df.filter(df["external_id"].is_not_null())["external_id"].to_list())
@@ -50,10 +67,14 @@ def _get_existing_ids() -> set[str]:
         return set()
 
 
-def _get_manual_candidates(business_id: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Saisies manuelles pas encore rattachées à un relevé, sur la période du fichier."""
-    dates = [date.fromisoformat(r["date"]) for r in rows]
-    window = timedelta(days=MANUAL_MATCH_WINDOW_DAYS)
+def _get_manual_candidates(
+    business_id: str,
+    rows: list[dict[str, Any]],
+    window_days: int = MANUAL_MATCH_WINDOW_DAYS,
+) -> list[dict[str, Any]]:
+    """Saisies manuelles pas encore rattachées à un relevé, sur la période des lignes."""
+    dates = [date.fromisoformat(str(r["date"])[:10]) for r in rows]
+    window = timedelta(days=window_days)
     df = read_transactions(
         business_id=business_id,
         date_from=min(dates) - window,
@@ -154,16 +175,16 @@ for uploaded_file in uploaded_files or []:
             if account is None:
                 continue
 
-            if account["name"] == JOINT_ACCOUNT_NAME:
-                st.warning(
-                    "L'import du compte commun n'est pas encore disponible : il faut d'abord "
-                    "les règles qui trient ses opérations (ta participation, tes achats perso, "
-                    "le reste du foyer). Sinon tout le compte commun entrerait dans ton budget perso."
-                )
-                continue
-
             business_id = account["owner"]
             mapped = [map_statement_transaction(r, business_id, account["id"]) for r in rows]
+            is_joint = account["name"] == JOINT_ACCOUNT_NAME
+            if is_joint:
+                mapped = classify_joint_transactions(mapped)
+                st.caption(
+                    "Compte commun : les opérations sont enregistrées comme dépenses du foyer, "
+                    "hors budget perso. Tes paiements carte et tes virements seront à vérifier "
+                    "juste en dessous après l'import."
+                )
             manual_candidates = _get_manual_candidates(business_id, rows)
             new_rows, n_duplicates = deduplicate(mapped, existing_ids)
             new_rows, links = match_manual_entries(new_rows, manual_candidates)
@@ -231,6 +252,90 @@ st.caption(
     "Exporte les opérations au format CSV depuis l'espace client de la banque. "
     "Crédit Mutuel : garde le nom de fichier d'origine, c'est le n° de compte."
 )
+
+# ---------------------------------------------------------------------------
+# Section Compte commun — opérations à vérifier
+# ---------------------------------------------------------------------------
+try:
+    review_df = read_transactions(
+        business_id=str(BusinessId.PERSONAL), include_household=True
+    ).filter(pl.col("needs_review"))
+except Exception as exc:
+    st.error(f"Impossible de charger les opérations à vérifier : {exc}")
+    review_df = pl.DataFrame()
+
+if not review_df.is_empty():
+    st.divider()
+    st.subheader(f"🔎 Compte commun — {len(review_df)} opération(s) à vérifier")
+    st.caption(
+        "Coche ce qui compte dans **ton** budget. Un paiement avec ta carte coché devient une "
+        f"dépense perso ; décoché, il reste une dépense du foyer. Un virement de ta part coché "
+        f"crée la dépense « {PARTICIPATION_LABEL} » — inutile de la saisir à la main, "
+        "et celles déjà saisies ne sont pas recréées."
+    )
+    review_rows = review_df.sort("date").to_dicts()
+    editor_df = pl.DataFrame({
+        "id": [r["id"] for r in review_rows],
+        "Date": [r["date"] for r in review_rows],
+        "Type": [
+            "💳 Ton paiement carte" if review_kind(r) == KIND_CARD else "↘️ Ton virement"
+            for r in review_rows
+        ],
+        "Libellé": [r.get("raw_label") or r["label"] for r in review_rows],
+        "Montant": [r["amount"] for r in review_rows],
+        "Compte dans mon budget": [default_counts_in_budget(r) for r in review_rows],
+    })
+    edited = st.data_editor(
+        editor_df.to_pandas(),
+        hide_index=True,
+        width="stretch",
+        disabled=["id", "Date", "Type", "Libellé", "Montant"],
+        column_config={
+            "id": None,
+            "Montant": st.column_config.NumberColumn(format="%.2f €"),
+            "Compte dans mon budget": st.column_config.CheckboxColumn(),
+        },
+        key="joint_review_editor",
+    )
+
+    if st.button("Valider", key="btn_joint_review", type="primary"):
+        try:
+            choices = dict(zip(edited["id"], edited["Compte dans mon budget"], strict=True))
+            updates, participations = resolve_review(review_rows, choices)
+
+            n_already_entered = 0
+            if participations:
+                # Mêmes règles qu'à l'import : une participation déjà saisie à la main
+                # n'est pas recréée, la saisie reçoit juste la référence bancaire.
+                candidates = [
+                    c for c in _get_manual_candidates(
+                        str(BusinessId.PERSONAL), participations, _PARTICIPATION_MATCH_WINDOW_DAYS,
+                    )
+                    if c["amount"] < 0
+                ]
+                to_insert, links = match_manual_entries(
+                    [{**p, "account_id": None} for p in participations],
+                    candidates,
+                    window_days=_PARTICIPATION_MATCH_WINDOW_DAYS,
+                )
+                link_transactions_to_bank(links)
+                inserted_ids = {p["external_id"] for p in to_insert}
+                to_insert = [p for p in participations if p["external_id"] in inserted_ids]
+                if to_insert:
+                    bulk_upsert_transactions(to_insert)
+                n_already_entered = len(links)
+
+            apply_household_review(updates)
+            invalidate_cache()
+            n_perso = sum(1 for u in updates if not u["is_household"])
+            message = (
+                f"{n_perso} achat(s) perso, {len(participations)} participation(s) "
+                f"(dont {n_already_entered} déjà saisie(s) à la main)."
+            )
+            st.toast(message, icon="✅")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Erreur lors de la validation : {exc}")
 
 st.divider()
 

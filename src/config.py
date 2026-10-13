@@ -15,9 +15,19 @@ class BusinessId(StrEnum):
 
 # Compte commun du foyer : ses transactions ne doivent pas entrer telles quelles
 # dans le budget perso (dépenses du conjoint, prêt, charges couvertes par la
-# participation mensuelle). Son import est bloqué tant que les règles dédiées
-# ne sont pas en place.
+# participation mensuelle) — elles sont importées en is_household.
 JOINT_ACCOUNT_NAME = "Compte commun"
+
+# Repères pour trier les opérations du compte commun (voir logic/household.py) :
+# la carte de l'utilisatrice sur ce compte, et son nom tel qu'il apparaît dans
+# les libellés de virement.
+JOINT_OWN_CARD = "3935"
+JOINT_OWN_NAME_PATTERNS = ("CHARLOTTE PARIS", "PARIS CHARLOTTE")
+
+# Virement mensuel reçu sur le compte commun → dépense dans le budget perso.
+# Le revenu correspondant est déjà compté dans le bénéfice Phi Rising.
+PARTICIPATION_LABEL = "Participation foyer (loyer + charges)"
+PARTICIPATION_CATEGORY = "Loyer"
 
 
 class TransactionSource(StrEnum):

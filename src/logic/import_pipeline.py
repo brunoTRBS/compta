@@ -73,7 +73,7 @@ def match_manual_entries(
 
     Une ligne bancaire correspond à une saisie manuelle si le montant est
     identique, l'écart de date ≤ window_days, et le compte de la saisie est le
-    même (ou non renseigné). Chaque saisie ne sert qu'une fois ; à égalité, la
+    même (ou non renseigné de part ou d'autre). Chaque saisie ne sert qu'une fois ; à égalité, la
     plus proche en date gagne.
 
     Returns:
@@ -93,7 +93,7 @@ def match_manual_entries(
         for cand in unused:
             if round(float(cand["amount"]), 2) != tx_amount:
                 continue
-            if cand.get("account_id") and cand["account_id"] != tx.get("account_id"):
+            if cand.get("account_id") and tx.get("account_id") and cand["account_id"] != tx["account_id"]:
                 continue
             gap = abs((_as_date(cand["date"]) - tx_date).days)
             if gap <= window_days and (best_gap is None or gap < best_gap):

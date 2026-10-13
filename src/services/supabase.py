@@ -83,6 +83,17 @@ def link_transactions_to_bank(links: list[dict[str, Any]]) -> None:
         client.table("transactions").update(updates).eq("id", link["id"]).execute()
 
 
+def apply_household_review(updates: list[dict[str, Any]]) -> None:
+    """Enregistre les choix faits sur les opérations du compte commun à vérifier.
+
+    `updates` = liste de {id, is_household, needs_review}.
+    """
+    client = get_supabase()
+    for item in updates:
+        fields = {k: v for k, v in item.items() if k != "id"}
+        client.table("transactions").update(fields).eq("id", item["id"]).execute()
+
+
 def update_transaction_category(transaction_id: str, category: str) -> dict[str, Any]:
     """Met à jour la catégorie d'une transaction."""
     result = (
