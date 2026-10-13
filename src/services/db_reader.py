@@ -114,7 +114,7 @@ def read_account_balance_history(account_id: str) -> pl.DataFrame:
     if not data:
         return pl.DataFrame(schema={"id": pl.Utf8, "date": pl.Date, "balance": pl.Float64})
     return pl.DataFrame(data, infer_schema_length=None).with_columns(
-        pl.col("date").cast(pl.Date),
+        pl.col("date").str.to_date("%Y-%m-%d"),
         pl.col("balance").cast(pl.Float64),
     )
 
@@ -138,7 +138,7 @@ def read_monthly_revenue(business_id: str, year: int) -> pl.DataFrame:
     return (
         pl.DataFrame(data, infer_schema_length=None)
         .with_columns(
-            pl.col("date").cast(pl.Date),
+            pl.col("date").str.to_date("%Y-%m-%d"),
             pl.col("amount").cast(pl.Float64),
         )
         .with_columns(pl.col("date").dt.month().alias("month"))
@@ -222,7 +222,7 @@ def read_patrimoine_evolution(
     return (
         pl.DataFrame(hist_data)
         .with_columns(
-            pl.col("date").cast(pl.Date),
+            pl.col("date").str.to_date("%Y-%m-%d"),
             pl.col("balance").cast(pl.Float64),
         )
         .group_by("date")
@@ -284,7 +284,7 @@ def invalidate_cache() -> None:
 def _cast_transactions(df: pl.DataFrame) -> pl.DataFrame:
     """Applique les types Polars corrects sur un DataFrame de transactions brut."""
     return df.with_columns(
-        pl.col("date").cast(pl.Date),
+        pl.col("date").str.to_date("%Y-%m-%d"),
         pl.col("amount").cast(pl.Float64),
         pl.col("is_income").cast(pl.Boolean),
         pl.col("is_transfer").cast(pl.Boolean),
