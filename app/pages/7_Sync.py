@@ -28,12 +28,19 @@ from src.logic.statement_parser import (
     map_statement_transaction,
     parse_statement,
 )
+from src.logic.transfers import (
+    TRANSFER_MATCH_WINDOW_DAYS,
+    default_counterpart,
+    is_transfer_like,
+    resolve_transfer_review,
+)
 from src.services.db_reader import invalidate_cache, read_transactions
 from src.services.stripe_client import fetch_payment_intents, map_payment_intent
 from src.services.supabase import (
-    apply_household_review,
+    bulk_update_transaction_fields,
     bulk_upsert_transactions,
     fetch_accounts,
+    insert_transactions,
     link_transactions_to_bank,
     update_account_bank_number,
 )
@@ -49,6 +56,8 @@ _BANK_LABEL_DEFAULT = "Crédit Mutuel"
 # La participation peut être saisie à la main n'importe quand dans le mois :
 # fenêtre plus large que pour un paiement carte.
 _PARTICIPATION_MATCH_WINDOW_DAYS = 10
+
+_NOT_A_TRANSFER = "❌ Pas un virement (dépense / revenu normal)"
 
 _STRIPE_BUSINESS_MAP = {
     "Phi Rising": str(BusinessId.PHI_RISING),
@@ -88,6 +97,25 @@ def _get_manual_candidates(
     ).to_dicts()
 
 
+def _get_existing_bank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Lignes de relevé déjà en base (tous comptes) pouvant être l'autre côté d'un virement."""
+    dates = [date.fromisoformat(str(r["date"])[:10]) for r in rows]
+    window = timedelta(days=TRANSFER_MATCH_WINDOW_DAYS)
+    df = read_transactions(date_from=min(dates) - window, date_to=max(dates) + window)
+    if df.is_empty():
+        return []
+    return df.filter(pl.col("source") == "bank").to_dicts()
+
+
+def _treatment(row: dict[str, Any]) -> str:
+    """Ce que l'import fera de la ligne, pour l'aperçu."""
+    if row.get("is_household"):
+        return "🔎 À vérifier" if row.get("needs_review") else "🏠 Foyer (hors budget)"
+    if is_transfer_like(row):
+        return "🔁 Virement interne"
+    return "💰 Budget"
+
+
 def _render_report(report) -> None:
     """Affiche les métriques du rapport d'import."""
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -100,6 +128,13 @@ def _render_report(report) -> None:
         st.info(
             f"{report.pending_manual} transaction(s) sans catégorie — "
             "rendez-vous sur Budget Perso ou une page activité pour les traiter."
+        )
+    if report.transfers_detected:
+        st.success(f"{report.transfers_detected} virement(s) interne(s) reconnu(s) automatiquement.")
+    if report.transfers_to_review:
+        st.info(
+            f"{report.transfers_to_review} virement(s) à confirmer — voir « Virements à vérifier » "
+            "plus bas."
         )
     for err in report.errors:
         st.error(err)
@@ -201,6 +236,7 @@ for uploaded_file in uploaded_files or []:
                     st.dataframe(
                         pl.DataFrame(new_rows)
                         .select(["date", "label", "amount", "bank_category"])
+                        .with_columns(pl.Series("Traitement", [_treatment(r) for r in new_rows]))
                         .rename({
                             "date": "Date", "label": "Libellé",
                             "amount": "Montant", "bank_category": "Catégorie banque",
@@ -240,6 +276,7 @@ if import_btn:
                     source="bank",
                     # Relu ici : un lot précédent a pu rattacher certaines saisies
                     manual_transactions=_get_manual_candidates(batch["account"]["owner"], batch["rows"]),
+                    existing_bank_transactions=_get_existing_bank_rows(batch["rows"]),
                 )
                 invalidate_cache()
                 status.update(label=f"{account_label} : import terminé ✅", state="complete")
@@ -257,12 +294,15 @@ st.caption(
 # Section Compte commun — opérations à vérifier
 # ---------------------------------------------------------------------------
 try:
-    review_df = read_transactions(
-        business_id=str(BusinessId.PERSONAL), include_household=True
-    ).filter(pl.col("needs_review"))
+    all_review_df = read_transactions(include_household=True).filter(pl.col("needs_review"))
 except Exception as exc:
     st.error(f"Impossible de charger les opérations à vérifier : {exc}")
-    review_df = pl.DataFrame()
+    all_review_df = pl.DataFrame()
+
+review_df = all_review_df.filter(pl.col("is_household")) if not all_review_df.is_empty() else all_review_df
+transfer_review_df = (
+    all_review_df.filter(~pl.col("is_household")) if not all_review_df.is_empty() else all_review_df
+)
 
 if not review_df.is_empty():
     st.divider()
@@ -325,7 +365,7 @@ if not review_df.is_empty():
                     bulk_upsert_transactions(to_insert)
                 n_already_entered = len(links)
 
-            apply_household_review(updates)
+            bulk_update_transaction_fields(updates)
             invalidate_cache()
             n_perso = sum(1 for u in updates if not u["is_household"])
             message = (
@@ -333,6 +373,65 @@ if not review_df.is_empty():
                 f"(dont {n_already_entered} déjà saisie(s) à la main)."
             )
             st.toast(message, icon="✅")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Erreur lors de la validation : {exc}")
+
+# ---------------------------------------------------------------------------
+# Section Virements à vérifier — un seul côté du virement est importé
+# ---------------------------------------------------------------------------
+if not transfer_review_df.is_empty():
+    st.divider()
+    st.subheader(f"🔁 Virements à vérifier — {len(transfer_review_df)}")
+    st.caption(
+        "Virements entre tes comptes dont l'autre côté n'est pas importé (ex : ton virement "
+        "depuis le compte pro). Indique l'autre compte : la ligne devient un virement interne, "
+        "compté comme si tu l'avais saisi dans l'onglet Virement — inutile de le faire. "
+        "Un virement vers ou depuis le compte commun : choisis « Pas un virement »."
+    )
+    transfer_accounts = [a for a in all_accounts if a["name"] != JOINT_ACCOUNT_NAME]
+    transfer_options = {_account_label(a): a for a in transfer_accounts}
+    account_names = {a["id"]: a["name"] for a in all_accounts}
+    transfer_rows = transfer_review_df.sort("date").to_dicts()
+
+    def _default_option(row: dict[str, Any]) -> str:
+        account = default_counterpart(row, transfer_accounts)
+        return _account_label(account) if account else _NOT_A_TRANSFER
+
+    transfer_editor_df = pl.DataFrame({
+        "id": [r["id"] for r in transfer_rows],
+        "Date": [r["date"] for r in transfer_rows],
+        "Compte": [account_names.get(r["account_id"], "?") for r in transfer_rows],
+        "Libellé": [r.get("raw_label") or r["label"] for r in transfer_rows],
+        "Montant": [r["amount"] for r in transfer_rows],
+        "Autre compte": [_default_option(r) for r in transfer_rows],
+    })
+    transfer_edited = st.data_editor(
+        transfer_editor_df.to_pandas(),
+        hide_index=True,
+        width="stretch",
+        disabled=["id", "Date", "Compte", "Libellé", "Montant"],
+        column_config={
+            "id": None,
+            "Montant": st.column_config.NumberColumn(format="%.2f €"),
+            "Autre compte": st.column_config.SelectboxColumn(
+                options=[*transfer_options.keys(), _NOT_A_TRANSFER], required=True,
+            ),
+        },
+        key="transfer_review_editor",
+    )
+
+    if st.button("Valider", key="btn_transfer_review", type="primary"):
+        try:
+            counterparts = {
+                row_id: transfer_options.get(choice)
+                for row_id, choice in zip(transfer_edited["id"], transfer_edited["Autre compte"], strict=True)
+            }
+            updates, legs = resolve_transfer_review(transfer_rows, counterparts)
+            insert_transactions(legs)
+            bulk_update_transaction_fields(updates)
+            invalidate_cache()
+            st.toast(f"{len(legs)} virement(s) enregistré(s).", icon="✅")
             st.rerun()
         except Exception as exc:
             st.error(f"Erreur lors de la validation : {exc}")

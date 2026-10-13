@@ -267,3 +267,30 @@ def test_match_ignores_account_when_bank_side_has_none():
         window_days=10,
     )
     assert links[0]["id"] == "m1"
+
+
+class TestRunFullPipelineWithTransfers:
+    @patch("src.logic.import_pipeline.bulk_update_transaction_fields")
+    @patch("src.logic.import_pipeline.bulk_upsert_transactions")
+    @patch("src.logic.import_pipeline.fetch_categorization_rules", return_value=[])
+    def test_transfers_detected_and_reported(self, _rules, mock_upsert, mock_update):
+        base = {"business_id": "personal", "category": None, "is_household": False,
+                "is_transfer": False, "transfer_group_id": None, "needs_review": False}
+        rows = [
+            {**base, "external_id": "a", "date": "2026-10-01", "amount": -100.0,
+             "label": "VIR INST PARIS CHARLOTTE", "raw_label": "VIR INST PARIS CHARLOTTE",
+             "account_id": "acc-perso"},
+            {**base, "external_id": "b", "date": "2026-10-02", "amount": 800.0,
+             "label": "VIR INST MME CHARLOTTE PARIS", "raw_label": "VIR INST MME CHARLOTTE PARIS",
+             "account_id": "acc-perso"},
+        ]
+        existing = [{**base, "id": "liv-1", "date": "2026-10-01", "amount": 100.0,
+                     "label": "VIR INST PARIS CHARLOTTE", "raw_label": "VIR INST PARIS CHARLOTTE",
+                     "account_id": "acc-livret"}]
+        report = run_full_pipeline(rows, set(), "bank", existing_bank_transactions=existing)
+        assert report.transfers_detected == 1
+        assert report.transfers_to_review == 1
+        mock_update.assert_called_once()
+        inserted = {t["external_id"]: t for t in mock_upsert.call_args[0][0]}
+        assert inserted["a"]["is_transfer"] is True
+        assert inserted["b"]["needs_review"] is True

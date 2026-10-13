@@ -238,4 +238,8 @@ def map_statement_transaction(
         "notes": None,
         "is_household": False,
         "needs_review": False,
+        # Tous les champs sont présents sur chaque ligne : en insertion par lot,
+        # un champ absent serait envoyé à NULL (refusé pour is_transfer).
+        "is_transfer": False,
+        "transfer_group_id": None,
     }

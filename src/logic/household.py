@@ -80,6 +80,8 @@ def participation_expense(tx: dict[str, Any]) -> dict[str, Any]:
         "notes": None,
         "is_household": False,
         "needs_review": False,
+        "is_transfer": False,
+        "transfer_group_id": None,
     }
 
 

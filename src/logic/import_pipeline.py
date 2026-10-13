@@ -7,7 +7,9 @@ from typing import Any
 import polars as pl
 
 from src.logic.categorizer import apply_rules
+from src.logic.transfers import detect_transfers
 from src.services.supabase import (
+    bulk_update_transaction_fields,
     bulk_upsert_transactions,
     fetch_categorization_rules,
     link_transactions_to_bank,
@@ -28,6 +30,8 @@ class ImportReport:
     new: int = 0
     duplicates_ignored: int = 0
     linked_manual: int = 0
+    transfers_detected: int = 0
+    transfers_to_review: int = 0
     auto_categorized: int = 0
     pending_manual: int = 0
     errors: list[str] = field(default_factory=list)
@@ -142,6 +146,7 @@ def run_full_pipeline(
     existing_external_ids: set[str],
     source: str,
     manual_transactions: list[dict[str, Any]] | None = None,
+    existing_bank_transactions: list[dict[str, Any]] | None = None,
 ) -> ImportReport:
     """Orchestre : déduplication → rapprochement des saisies manuelles →
     catégorisation → persistance en base.
@@ -152,6 +157,9 @@ def run_full_pipeline(
         source: "bank" ou "stripe" (pour le rapport).
         manual_transactions: saisies manuelles candidates au rapprochement
             (relevés bancaires uniquement) — voir match_manual_entries.
+        existing_bank_transactions: lignes bancaires déjà en base pouvant être
+            l'autre côté d'un virement (relevés bancaires uniquement) — voir
+            transfers.detect_transfers. None = pas de détection des virements.
 
     Returns:
         ImportReport avec les statistiques complètes de l'import.
@@ -174,6 +182,19 @@ def run_full_pipeline(
     report.new = len(new_txs)
     if not new_txs:
         return report
+
+    # Étape 1 ter — Virements internes (rejets, 2 côtés importés, à vérifier)
+    if existing_bank_transactions is not None:
+        new_txs, existing_updates, report.transfers_detected = detect_transfers(
+            new_txs, existing_bank_transactions
+        )
+        report.transfers_to_review = sum(
+            1 for tx in new_txs if tx.get("needs_review") and not tx.get("is_household")
+        )
+        try:
+            bulk_update_transaction_fields(existing_updates)
+        except Exception as exc:
+            report.errors.append(f"Mise à jour des virements existants impossible : {exc}")
 
     # Étape 2 — Catégorisation automatique
     try:

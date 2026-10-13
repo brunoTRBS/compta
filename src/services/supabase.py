@@ -54,6 +54,13 @@ def fetch_transactions(
     return query.execute().data
 
 
+def insert_transactions(transactions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Insère un lot de transactions (sans external_id : pas de dédoublonnage)."""
+    if not transactions:
+        return []
+    return get_supabase().table("transactions").insert(transactions).execute().data
+
+
 def insert_transaction(transaction: dict[str, Any]) -> dict[str, Any]:
     """Insère une transaction et retourne la ligne créée."""
     result = get_supabase().table("transactions").insert(transaction).execute()
@@ -83,11 +90,9 @@ def link_transactions_to_bank(links: list[dict[str, Any]]) -> None:
         client.table("transactions").update(updates).eq("id", link["id"]).execute()
 
 
-def apply_household_review(updates: list[dict[str, Any]]) -> None:
-    """Enregistre les choix faits sur les opérations du compte commun à vérifier.
-
-    `updates` = liste de {id, is_household, needs_review}.
-    """
+def bulk_update_transaction_fields(updates: list[dict[str, Any]]) -> None:
+    """Met à jour des champs par transaction. `updates` = liste de {id, champ: valeur, …}
+    (ex : choix faits sur les opérations à vérifier, virements détectés)."""
     client = get_supabase()
     for item in updates:
         fields = {k: v for k, v in item.items() if k != "id"}
