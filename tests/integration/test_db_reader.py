@@ -43,6 +43,7 @@ _TX_ROW = {
     "is_household": False,
     "needs_review": False,
     "raw_label": None,
+    "bank_category": None,
 }
 
 

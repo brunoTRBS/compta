@@ -22,6 +22,7 @@ from src.logic.import_pipeline import (
     match_manual_entries,
     run_full_pipeline,
 )
+from src.logic.reconciliation import statement_closing_balance
 from src.logic.statement_parser import (
     BANK_BOURSOBANK,
     UnknownStatementFormat,
@@ -42,6 +43,7 @@ from src.services.supabase import (
     fetch_accounts,
     insert_transactions,
     link_transactions_to_bank,
+    record_statement_balance,
     update_account_bank_number,
 )
 
@@ -278,6 +280,13 @@ if import_btn:
                     manual_transactions=_get_manual_candidates(batch["account"]["owner"], batch["rows"]),
                     existing_bank_transactions=_get_existing_bank_rows(batch["rows"]),
                 )
+                # Solde réel en fin de relevé : sert au contrôle des comptes (page À traiter)
+                closing = statement_closing_balance(batch["rows"])
+                if closing and not report.errors:
+                    try:
+                        record_statement_balance(batch["account"]["id"], *closing)
+                    except Exception as exc:
+                        report.errors.append(f"Solde du relevé non enregistré : {exc}")
                 invalidate_cache()
                 status.update(label=f"{account_label} : import terminé ✅", state="complete")
                 _render_report(report)

@@ -33,11 +33,12 @@ Utilisez le menu de navigation à gauche pour accéder aux modules :
 
 | # | Module | Description |
 |---|--------|-------------|
+| 0 | **À traiter** | Opérations importées à classer, règles automatiques, contrôle des comptes |
 | 1 | **Vue consolidée** | Perso + Phi Rising + Booth in Lyon sur une même vue, détail par compte réel |
 | 2 | **Phi Rising** | Transactions, récurrences, virements, CA/URSSAF/marge nette — Coaching & Formation |
 | 3 | **Booth in Lyon** | Transactions, récurrences, virements, CA/URSSAF/marge nette — Location Photobooth |
 | 4 | **Budget Perso** | Transactions, récurrences, virements, revenus/dépenses, taux d'épargne |
 | 5 | **Patrimoine** | Bilan des comptes et évolution patrimoniale |
-| 6 | **Sync** | Import des relevés bancaires (CSV) & synchro Stripe |
+| 6 | **Sync** | Import des relevés bancaires (CSV), vérifications du compte commun et des virements, synchro Stripe |
 | 7 | **Paramètres** | Statut des connexions, gestion du cache |
 """)

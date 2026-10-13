@@ -19,7 +19,7 @@ _CACHE_TTL = 300
 
 _TXN_COLS = (
     "id,date,amount,label,source,business_id,category,is_income,external_id,created_at,"
-    "account_id,is_transfer,transfer_group_id,is_household,needs_review,raw_label"
+    "account_id,is_transfer,transfer_group_id,is_household,needs_review,raw_label,bank_category"
 )
 _TXN_LIMIT = 50_000
 
@@ -40,6 +40,7 @@ _TXN_SCHEMA: dict[str, type[pl.DataType]] = {
     "is_household": pl.Boolean,
     "needs_review": pl.Boolean,
     "raw_label": pl.Utf8,
+    "bank_category": pl.Utf8,
 }
 
 
@@ -124,6 +125,27 @@ def read_account_balance_history(account_id: str) -> pl.DataFrame:
     )
     if not data:
         return pl.DataFrame(schema={"id": pl.Utf8, "date": pl.Date, "balance": pl.Float64})
+    return pl.DataFrame(data, infer_schema_length=None).with_columns(
+        pl.col("date").str.to_date("%Y-%m-%d"),
+        pl.col("balance").cast(pl.Float64),
+    )
+
+
+@st.cache_data(ttl=_CACHE_TTL)
+def read_statement_balances(account_id: str) -> pl.DataFrame:
+    """Soldes réels d'un compte relevés à chaque import (contrôle de solde)."""
+    data = (
+        get_supabase()
+        .table("account_balance_history")
+        .select("date,balance")
+        .eq("account_id", account_id)
+        .eq("source", "statement")
+        .order("date")
+        .execute()
+        .data
+    )
+    if not data:
+        return pl.DataFrame(schema={"date": pl.Date, "balance": pl.Float64})
     return pl.DataFrame(data, infer_schema_length=None).with_columns(
         pl.col("date").str.to_date("%Y-%m-%d"),
         pl.col("balance").cast(pl.Float64),
@@ -302,5 +324,6 @@ def _cast_transactions(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("is_household").cast(pl.Boolean),
         pl.col("needs_review").cast(pl.Boolean),
         pl.col("raw_label").cast(pl.Utf8),
+        pl.col("bank_category").cast(pl.Utf8),
         pl.col("created_at").str.to_datetime(time_unit="us", time_zone="UTC"),
     )

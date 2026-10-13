@@ -239,6 +239,31 @@ def update_account_balance(account_id: str, balance: float) -> dict[str, Any]:
     return {"account_id": account_id, "balance": balance}
 
 
+def record_statement_balance(account_id: str, date: str, balance: float) -> None:
+    """Enregistre le solde réel d'un compte donné par un relevé importé.
+
+    Le solde courant du compte (accounts.balance) suit le point d'historique le plus
+    récent : importer un vieux relevé ne fait pas reculer le solde affiché.
+    """
+    client = get_supabase()
+    snapshot = {"account_id": account_id, "date": date, "balance": balance, "source": "statement"}
+    client.table("account_balance_history").upsert(snapshot, on_conflict="account_id,date").execute()
+
+    latest = (
+        client.table("account_balance_history")
+        .select("balance")
+        .eq("account_id", account_id)
+        .order("date", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if latest:
+        client.table("accounts").update(
+            {"balance": latest[0]["balance"], "last_synced_at": "now()"}
+        ).eq("id", account_id).execute()
+
+
 def delete_balance_snapshot(account_id: str, snapshot_id: str) -> None:
     """Supprime un point de l'historique des soldes d'un compte (erreur de saisie).
 
@@ -352,6 +377,11 @@ def fetch_categorization_rules() -> list[dict[str, Any]]:
         .execute()
         .data
     )
+
+
+def insert_categorization_rule(rule: dict[str, Any]) -> dict[str, Any]:
+    """Crée une règle de catégorisation ({pattern, category, business_id, priority, is_active})."""
+    return get_supabase().table("categorization_rules").insert(rule).execute().data[0]
 
 
 # ---------------------------------------------------------------------------
