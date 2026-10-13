@@ -71,6 +71,18 @@ def bulk_upsert_transactions(transactions: list[dict[str, Any]]) -> list[dict[st
     return result.data
 
 
+def link_transactions_to_bank(links: list[dict[str, Any]]) -> None:
+    """Rattache des saisies manuelles à leur ligne de relevé bancaire.
+
+    Seuls l'identifiant bancaire, le libellé brut, la catégorie de la banque et
+    le compte sont écrits : le libellé et la catégorie saisis à la main restent.
+    """
+    client = get_supabase()
+    for link in links:
+        updates = {k: v for k, v in link.items() if k != "id" and v is not None}
+        client.table("transactions").update(updates).eq("id", link["id"]).execute()
+
+
 def update_transaction_category(transaction_id: str, category: str) -> dict[str, Any]:
     """Met à jour la catégorie d'une transaction."""
     result = (
@@ -189,6 +201,13 @@ def fetch_accounts(owner: str | None = None) -> list[dict[str, Any]]:
     if owner is not None:
         query = query.eq("owner", owner)
     return query.execute().data
+
+
+def update_account_bank_number(account_id: str, bank_account_number: str) -> None:
+    """Associe un n° de compte bancaire (tel qu'il figure dans les relevés) à un compte."""
+    get_supabase().table("accounts").update(
+        {"bank_account_number": bank_account_number}
+    ).eq("id", account_id).execute()
 
 
 def update_account_balance(account_id: str, balance: float) -> dict[str, Any]:

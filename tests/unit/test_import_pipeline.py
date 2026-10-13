@@ -185,3 +185,76 @@ class TestRunFullPipeline:
         ):
             report = run_full_pipeline([], set(), source="stripe")
         assert report.source == "stripe"
+
+
+# ---------------------------------------------------------------------------
+# Tests : match_manual_entries
+# ---------------------------------------------------------------------------
+from src.logic.import_pipeline import match_manual_entries  # noqa: E402
+
+
+def _bank(amount, day, account="acc-perso", ext="bourso_1"):
+    return {"date": f"2026-10-{day:02d}", "amount": amount, "account_id": account,
+            "external_id": ext, "raw_label": "CARTE X", "bank_category": None}
+
+
+def _manual(id_, amount, day, account="acc-perso"):
+    return {"id": id_, "date": f"2026-10-{day:02d}", "amount": amount, "account_id": account}
+
+
+class TestMatchManualEntries:
+    def test_same_amount_close_date_is_linked(self):
+        unmatched, links = match_manual_entries([_bank(-13.0, 5)], [_manual("m1", -13.0, 2)])
+        assert unmatched == []
+        assert links == [{"id": "m1", "external_id": "bourso_1", "raw_label": "CARTE X",
+                          "bank_category": None, "account_id": "acc-perso"}]
+
+    def test_date_too_far_is_not_linked(self):
+        unmatched, links = match_manual_entries([_bank(-13.0, 20)], [_manual("m1", -13.0, 2)])
+        assert len(unmatched) == 1
+        assert links == []
+
+    def test_different_amount_is_not_linked(self):
+        unmatched, links = match_manual_entries([_bank(-13.0, 5)], [_manual("m1", -14.0, 5)])
+        assert len(unmatched) == 1 and links == []
+
+    def test_other_account_is_not_linked(self):
+        unmatched, links = match_manual_entries(
+            [_bank(-13.0, 5)], [_manual("m1", -13.0, 5, account="acc-livret")]
+        )
+        assert len(unmatched) == 1 and links == []
+
+    def test_manual_without_account_can_be_linked(self):
+        _, links = match_manual_entries([_bank(-13.0, 5)], [_manual("m1", -13.0, 5, account=None)])
+        assert links[0]["id"] == "m1"
+
+    def test_each_manual_entry_used_once(self):
+        """2 cafés à 2,50 € à la banque, 1 seul saisi à la main → 1 nouveau."""
+        unmatched, links = match_manual_entries(
+            [_bank(-2.5, 5, ext="a"), _bank(-2.5, 5, ext="b")], [_manual("m1", -2.5, 5)]
+        )
+        assert len(unmatched) == 1 and len(links) == 1
+
+    def test_closest_date_wins(self):
+        _, links = match_manual_entries(
+            [_bank(-10.0, 5)], [_manual("far", -10.0, 1), _manual("near", -10.0, 6)]
+        )
+        assert links[0]["id"] == "near"
+
+
+class TestRunFullPipelineWithManual:
+    @patch("src.logic.import_pipeline.link_transactions_to_bank")
+    @patch("src.logic.import_pipeline.bulk_upsert_transactions")
+    @patch("src.logic.import_pipeline.fetch_categorization_rules", return_value=[])
+    def test_linked_rows_are_not_inserted(self, _rules, mock_upsert, mock_link):
+        bank_rows = [
+            {**_bank(-13.0, 5, ext="a"), "label": "Resto", "business_id": "personal", "category": None},
+            {**_bank(-40.0, 6, ext="b"), "label": "Courses", "business_id": "personal", "category": None},
+        ]
+        report = run_full_pipeline(bank_rows, set(), "bank",
+                                   manual_transactions=[_manual("m1", -13.0, 5)])
+        assert report.linked_manual == 1
+        assert report.new == 1
+        mock_link.assert_called_once()
+        inserted = mock_upsert.call_args[0][0]
+        assert [t["external_id"] for t in inserted] == ["b"]

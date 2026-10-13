@@ -31,7 +31,7 @@ app/
 src/
   config.py        ← constantes métier (taux URSSAF, enums)
   logic/           ← transformations Polars (urssaf, revenue, budget…)
-  services/        ← couche d'accès aux données (supabase, db_reader, gocardless, stripe)
+  services/        ← couche d'accès aux données (supabase, db_reader, stripe)
   utils/           ← utilitaires (health checks)
 infra/
   migrations/      ← schéma SQL Supabase (001→004)
@@ -46,7 +46,7 @@ tests/
 - Frontend : Streamlit
 - Processing : Polars
 - Database : Supabase
-- Automatisation : APIs GoCardless & Stripe
+- Automatisation : import des relevés CSV (BoursoBank, Crédit Mutuel) & API Stripe
 
 ## Spécifications Fonctionnelles
 ### Gestion Multi-Activité (Business)
@@ -62,7 +62,7 @@ tests/
 - Bilan Patrimonial : État des lieux global de ce que "possède" le foyer à l'instant T.
 
 ### Automatisation & Saisie
-- Collecte Auto : Importation via API des flux bancaires et Stripe.
+- Collecte Auto : Import des relevés bancaires CSV (compte reconnu automatiquement) et synchro API Stripe.
 - Matching Intelligent : Système de règles pour catégoriser automatiquement les dépenses récurrentes.
 - Saisie Manuelle : Possibilité d'ajouter des transactions (espèces) ou d'ajuster des imports via une interface tableur.
 

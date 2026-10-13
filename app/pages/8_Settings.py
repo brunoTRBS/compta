@@ -161,10 +161,6 @@ DB_URL        = "postgresql://postgres:<pwd>@db.<project>.supabase.co:5432/postg
 
 STRIPE_SECRET_KEY     = "sk_live_..."
 STRIPE_WEBHOOK_SECRET = "whsec_..."
-
-GOCARDLESS_SECRET_ID  = "<id>"
-GOCARDLESS_SECRET_KEY = "<key>"
-GOCARDLESS_ENV        = "live"
 """,
     language="toml",
 )
@@ -182,7 +178,7 @@ st.markdown(
 | **Application** | Compta Pro & Perso |
 | **Version** | 0.1.0 |
 | **Python** | ≥ 3.11 |
-| **Stack** | Streamlit · Polars · Supabase · GoCardless · Stripe |
+| **Stack** | Streamlit · Polars · Supabase · Stripe |
 | **Démarrage** | `streamlit run app/main.py` |
 | **Tests** | `pytest tests/` |
 | **Lint** | `ruff check src/ tests/` |

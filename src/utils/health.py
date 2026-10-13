@@ -49,19 +49,6 @@ def check_stripe() -> HealthStatus:
         return HealthStatus("Stripe", False, str(exc)[:120])
 
 
-def check_gocardless() -> HealthStatus:
-    """Teste GoCardless en récupérant un token d'accès."""
-    from src.services.gocardless import get_access_token
-
-    t0 = time.monotonic()
-    try:
-        get_access_token()
-        ms = round((time.monotonic() - t0) * 1000, 1)
-        return HealthStatus("GoCardless", True, "Token actif", ms)
-    except Exception as exc:
-        return HealthStatus("GoCardless", False, str(exc)[:120])
-
-
 def run_all_checks() -> list[HealthStatus]:
-    """Lance les trois vérifications et retourne la liste ordonnée."""
-    return [check_supabase(), check_stripe(), check_gocardless()]
+    """Lance les vérifications et retourne la liste ordonnée."""
+    return [check_supabase(), check_stripe()]

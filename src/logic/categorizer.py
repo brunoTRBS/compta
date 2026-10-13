@@ -27,7 +27,9 @@ def apply_rules(df: pl.DataFrame, rules: list[dict]) -> pl.DataFrame:
 
     categorized_rows = []
     for row in needs_category.iter_rows(named=True):
-        label_lower = row["label"].lower()
+        # Le libellé brut de la banque (raw_label) compte aussi : une règle écrite
+        # sur « CARTE … CB*8589 » doit continuer de marcher quand label est nettoyé.
+        label_lower = f"{row['label']} {row.get('raw_label') or ''}".lower()
         matched_category = None
 
         for rule in rules:

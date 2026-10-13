@@ -13,6 +13,13 @@ class BusinessId(StrEnum):
     PERSONAL = "personal"
 
 
+# Compte commun du foyer : ses transactions ne doivent pas entrer telles quelles
+# dans le budget perso (dépenses du conjoint, prêt, charges couvertes par la
+# participation mensuelle). Son import est bloqué tant que les règles dédiées
+# ne sont pas en place.
+JOINT_ACCOUNT_NAME = "Compte commun"
+
+
 class TransactionSource(StrEnum):
     BANK = "bank"
     STRIPE = "stripe"

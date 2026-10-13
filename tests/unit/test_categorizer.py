@@ -105,3 +105,20 @@ class TestCategorizationStats:
         stats = categorization_stats(empty)
         assert stats["total"] == 0
         assert stats["coverage_pct"] == 0.0
+
+
+def test_rule_matches_raw_label_when_label_is_cleaned():
+    """Une règle écrite sur le libellé brut continue de marcher après nettoyage."""
+    import polars as pl
+
+    from src.logic.categorizer import apply_rules
+
+    df = pl.DataFrame({
+        "label": ["La Villa Marlioz"],
+        "raw_label": ["CARTE 10/10/26 VILLA MARLIOZ 4 CB*1111"],
+        "business_id": ["personal"],
+        "category": [None],
+        "date": ["2026-10-12"],
+    }, schema_overrides={"category": pl.Utf8})
+    rules = [{"pattern": "VILLA MARLIOZ 4", "business_id": None, "category": "Sorties"}]
+    assert apply_rules(df, rules)["category"].to_list() == ["Sorties"]

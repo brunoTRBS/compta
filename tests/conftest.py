@@ -61,14 +61,6 @@ def mock_stripe():
 
 
 @pytest.fixture
-def mock_gocardless():
-    """Client GoCardless mocké."""
-    mock = MagicMock()
-    mock.transactions.list.return_value = MagicMock(transactions=[])
-    return mock
-
-
-@pytest.fixture
 def sample_transactions() -> pl.DataFrame:
     """DataFrame de transactions représentatif pour les tests unitaires."""
     return pl.DataFrame(

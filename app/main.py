@@ -38,6 +38,6 @@ Utilisez le menu de navigation à gauche pour accéder aux modules :
 | 3 | **Booth in Lyon** | Transactions, récurrences, virements, CA/URSSAF/marge nette — Location Photobooth |
 | 4 | **Budget Perso** | Transactions, récurrences, virements, revenus/dépenses, taux d'épargne |
 | 5 | **Patrimoine** | Bilan des comptes et évolution patrimoniale |
-| 6 | **Sync** | Import automatique GoCardless & Stripe |
+| 6 | **Sync** | Import des relevés bancaires (CSV) & synchro Stripe |
 | 7 | **Paramètres** | Statut des connexions, gestion du cache |
 """)

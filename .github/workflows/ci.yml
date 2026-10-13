@@ -21,12 +21,10 @@ jobs:
           cache: "pip"
 
       - name: Install test dependencies
-        # N'installe pas streamlit/supabase (stubbés dans conftest.py), mais `requests`
-        # est un import de module réel (src/services/gocardless.py) qu'il faut fournir
-        # sous peine de faire échouer tests/integration/test_gocardless.py à l'import.
+        # N'installe pas streamlit/supabase/stripe (stubbés dans conftest.py).
         run: |
           pip install --upgrade pip
-          pip install polars pytest pytest-mock ruff requests
+          pip install polars pytest pytest-mock ruff
 
       - name: Lint with ruff
         run: ruff check src/ tests/

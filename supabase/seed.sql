@@ -126,7 +126,7 @@ INSERT INTO accounts (name, institution, type, owner, currency, balance) VALUES
     ('Compte pro coaching',   'Hello Bank', 'current', 'phi_rising',    'EUR', 0),
     ('Compte pro photobooth', 'Revolut',    'revolut', 'booth_in_lyon', 'EUR', 0),
     ('Compte perso',          'Boursobank', 'current', 'personal',      'EUR', 0),
-    ('Compte commun',         'Hello Bank', 'current', 'personal',      'EUR', 0),
+    ('Compte commun',         'Crédit Mutuel', 'current', 'personal',   'EUR', 0),
     ('Livret épargne',        'Boursobank', 'savings', 'personal',      'EUR', 0)
 ON CONFLICT (name, owner) DO NOTHING;
 

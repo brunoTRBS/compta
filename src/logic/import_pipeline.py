@@ -1,12 +1,22 @@
 """Pipeline d'import : déduplication → catégorisation → persistance."""
 
 from dataclasses import dataclass, field
+from datetime import date as Date
 from typing import Any
 
 import polars as pl
 
 from src.logic.categorizer import apply_rules
-from src.services.supabase import bulk_upsert_transactions, fetch_categorization_rules
+from src.services.supabase import (
+    bulk_upsert_transactions,
+    fetch_categorization_rules,
+    link_transactions_to_bank,
+)
+
+# Écart max (en jours) entre une saisie manuelle et la ligne du relevé
+# correspondante : la banque enregistre souvent un paiement carte 1 à 3 jours
+# après l'achat.
+MANUAL_MATCH_WINDOW_DAYS = 4
 
 
 @dataclass
@@ -17,6 +27,7 @@ class ImportReport:
     total_fetched: int = 0
     new: int = 0
     duplicates_ignored: int = 0
+    linked_manual: int = 0
     auto_categorized: int = 0
     pending_manual: int = 0
     errors: list[str] = field(default_factory=list)
@@ -49,6 +60,58 @@ def deduplicate(
     return new, duplicates
 
 
+def _as_date(value: Any) -> Date:
+    return value if isinstance(value, Date) else Date.fromisoformat(str(value)[:10])
+
+
+def match_manual_entries(
+    bank_transactions: list[dict[str, Any]],
+    manual_transactions: list[dict[str, Any]],
+    window_days: int = MANUAL_MATCH_WINDOW_DAYS,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Rapproche les lignes du relevé des transactions déjà saisies à la main.
+
+    Une ligne bancaire correspond à une saisie manuelle si le montant est
+    identique, l'écart de date ≤ window_days, et le compte de la saisie est le
+    même (ou non renseigné). Chaque saisie ne sert qu'une fois ; à égalité, la
+    plus proche en date gagne.
+
+    Returns:
+        (lignes_bancaires_sans_correspondance, liens) où chaque lien vaut
+        {id, external_id, raw_label, bank_category, account_id} : la saisie
+        manuelle garde son libellé et sa catégorie, et reçoit l'identifiant
+        bancaire pour ne plus être proposée aux imports suivants.
+    """
+    unused = list(manual_transactions)
+    unmatched: list[dict[str, Any]] = []
+    links: list[dict[str, Any]] = []
+
+    for tx in sorted(bank_transactions, key=lambda t: str(t["date"])):
+        tx_date = _as_date(tx["date"])
+        tx_amount = round(float(tx["amount"]), 2)
+        best, best_gap = None, None
+        for cand in unused:
+            if round(float(cand["amount"]), 2) != tx_amount:
+                continue
+            if cand.get("account_id") and cand["account_id"] != tx.get("account_id"):
+                continue
+            gap = abs((_as_date(cand["date"]) - tx_date).days)
+            if gap <= window_days and (best_gap is None or gap < best_gap):
+                best, best_gap = cand, gap
+        if best is None:
+            unmatched.append(tx)
+            continue
+        unused.remove(best)
+        links.append({
+            "id": best["id"],
+            "external_id": tx.get("external_id"),
+            "raw_label": tx.get("raw_label"),
+            "bank_category": tx.get("bank_category"),
+            "account_id": tx.get("account_id"),
+        })
+    return unmatched, links
+
+
 def categorize(
     transactions: list[dict[str, Any]],
     rules: list[dict[str, Any]],
@@ -78,13 +141,17 @@ def run_full_pipeline(
     raw_transactions: list[dict[str, Any]],
     existing_external_ids: set[str],
     source: str,
+    manual_transactions: list[dict[str, Any]] | None = None,
 ) -> ImportReport:
-    """Orchestre : déduplication → catégorisation → persistance en base.
+    """Orchestre : déduplication → rapprochement des saisies manuelles →
+    catégorisation → persistance en base.
 
     Args:
         raw_transactions: Transactions mappées vers le schéma `transactions`.
         existing_external_ids: external_id déjà présents en base.
         source: "bank" ou "stripe" (pour le rapport).
+        manual_transactions: saisies manuelles candidates au rapprochement
+            (relevés bancaires uniquement) — voir match_manual_entries.
 
     Returns:
         ImportReport avec les statistiques complètes de l'import.
@@ -93,8 +160,18 @@ def run_full_pipeline(
 
     # Étape 1 — Déduplication
     new_txs, report.duplicates_ignored = deduplicate(raw_transactions, existing_external_ids)
-    report.new = len(new_txs)
 
+    # Étape 1 bis — Rapprochement avec les saisies manuelles existantes
+    links: list[dict[str, Any]] = []
+    if manual_transactions:
+        new_txs, links = match_manual_entries(new_txs, manual_transactions)
+        report.linked_manual = len(links)
+        try:
+            link_transactions_to_bank(links)
+        except Exception as exc:
+            report.errors.append(f"Rapprochement des saisies manuelles impossible : {exc}")
+
+    report.new = len(new_txs)
     if not new_txs:
         return report
 
