@@ -161,3 +161,14 @@ def test_rule_direction():
     ]
     assert apply_rules(_household_df("VIR INST TARBES BRUNO", 500.0), rules)["category"][0] == "Virements Bruno"
     assert apply_rules(_household_df("VIR INST TARBES BRUNO", -800.0), rules)["category"][0] == "Épargne Bruno"
+
+
+def test_rule_can_move_operation_to_another_scope():
+    """Deliveroo payé avec la carte du compte commun -> Perso."""
+    from src.logic.categorizer import apply_rules
+
+    rules = [{"pattern": "DELIVEROO", "business_id": "household", "category": "Restaurants & bars",
+              "target_business_id": "personal", "direction": "expense"}]
+    out = apply_rules(_household_df("CB LYON DELIVEROO CARTE 3935", -20.0), rules)
+    assert out["category"][0] == "Restaurants & bars"
+    assert out["business_id"][0] == "personal"

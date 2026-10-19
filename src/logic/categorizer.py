@@ -31,6 +31,7 @@ def apply_rules(df: pl.DataFrame, rules: list[dict]) -> pl.DataFrame:
         # sur « CARTE … CB*8589 » doit continuer de marcher quand label est nettoyé.
         label_lower = f"{row['label']} {row.get('raw_label') or ''}".lower()
         matched_category = None
+        matched_target = None
 
         is_household = row["business_id"] == "household"
         direction = "income" if (row.get("amount") or 0) > 0 else "expense"
@@ -45,9 +46,16 @@ def apply_rules(df: pl.DataFrame, rules: list[dict]) -> pl.DataFrame:
                 continue
             if rule["pattern"].lower() in label_lower:
                 matched_category = rule["category"]
+                matched_target = rule.get("target_business_id")
                 break
 
-        categorized_rows.append({**row, "category": matched_category})
+        # Une règle peut aussi ranger l'opération dans un autre budget (ex : Deliveroo
+        # payé avec la carte du compte commun -> Perso)
+        categorized_rows.append({
+            **row,
+            "category": matched_category,
+            "business_id": matched_target or row["business_id"],
+        })
 
     updated = pl.DataFrame(categorized_rows, schema=needs_category.schema)
     return pl.concat([has_category, updated]).sort("date", descending=True)

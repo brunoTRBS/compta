@@ -15,6 +15,7 @@ import polars as pl
 from src.config import HOUSEHOLD_NON_COMMON_CATEGORIES, JOINT_CARD_OWNERS
 from src.logic.categorizer import apply_rules
 from src.logic.household import propose_exceptional
+from src.logic.inbox import rule_updates
 from src.logic.transfers import find_rejected_pairs
 
 UNCATEGORIZED = "non classé"
@@ -112,35 +113,28 @@ def retro_classify(
     rules: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Applique aux opérations du foyer déjà importées ce que fait désormais l'import :
-    règles du foyer, opérations exceptionnelles, virements rejetés.
+    règles (catégorie, affectation), opérations exceptionnelles, virements rejetés.
 
     Returns:
         mises à jour [{id, champ: valeur…}] — seules les lignes qui changent.
     """
     if df.is_empty():
         return []
-    categorized = apply_rules(df, rules)
-    original = {r["id"]: r for r in df.to_dicts()}
-    rows = categorized.to_dicts()
+    updates: dict[str, dict[str, Any]] = {r["id"]: r for r in rule_updates(df, rules)}
+    categorized = {r["id"]: r for r in apply_rules(df, rules).to_dicts()}
 
-    updates: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        fields: dict[str, Any] = {}
-        if row.get("category") and not original[row["id"]].get("category"):
-            fields["category"] = row["category"]
+    for row_id, row in categorized.items():
         if not row.get("is_exceptional") and propose_exceptional(row):
-            fields["is_exceptional"] = True
-        if fields:
-            updates[row["id"]] = fields
+            updates.setdefault(row_id, {"id": row_id})["is_exceptional"] = True
 
-    for pair in find_rejected_pairs(rows, include_household=True):
+    for pair in find_rejected_pairs(list(categorized.values()), include_household=True):
         group_id = str(uuid.uuid4())
         for row in pair:
-            updates.setdefault(row["id"], {}).update(
+            updates.setdefault(row["id"], {"id": row["id"]}).update(
                 {"is_transfer": True, "transfer_group_id": group_id}
             )
 
-    return [{"id": row_id, **fields} for row_id, fields in updates.items()]
+    return list(updates.values())
 
 
 def operation_changes(original: dict[str, Any], edited: dict[str, Any]) -> dict[str, Any]:

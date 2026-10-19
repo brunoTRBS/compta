@@ -7,7 +7,7 @@ from typing import Any
 import polars as pl
 
 from src.logic.categorizer import apply_rules
-from src.logic.household import propose_exceptional
+from src.logic.household import KIND_CARD, propose_exceptional, review_kind
 from src.logic.transfers import detect_transfers
 from src.services.supabase import (
     bulk_update_transaction_fields,
@@ -204,6 +204,12 @@ def run_full_pipeline(
     except Exception as exc:
         report.errors.append(f"Catégorisation impossible : {exc}")
         report.pending_manual = report.new
+
+    # Étape 2 ter — Une carte du compte commun reconnue par une règle est une décision
+    # déjà prise (« Leclerc = foyer », « Deliveroo = perso ») : plus rien à vérifier
+    for tx in new_txs:
+        if tx.get("needs_review") and tx.get("category") and review_kind(tx) == KIND_CARD:
+            tx["needs_review"] = False
 
     # Étape 2 bis — Opérations exceptionnelles du foyer (après catégorisation : un
     # salaire ou une échéance de prêt n'est jamais exceptionnel)

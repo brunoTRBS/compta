@@ -1,4 +1,10 @@
-"""File « À traiter » : opérations importées sans catégorie, et aide à les classer.
+"""Boîte de réception « À traiter » : tout ce qui demande un geste après un import.
+
+Une ligne arrive ici pour l'une de quatre raisons : elle n'a pas de catégorie, c'est un
+paiement avec ta carte sur le compte commun (foyer ou perso ?), c'est ta participation au
+foyer, ou c'est un virement entre tes comptes dont l'autre côté n'est pas importé.
+Chaque ligne reçoit une affectation (Perso, Foyer, Phi Rising, Booth in Lyon, ou virement
+interne) et une catégorie ; un seul « Enregistrer » applique le tout (voir plan_inbox_changes).
 
 Deux aides :
 - un motif de règle proposé à partir du libellé de la banque (« EasyPark »,
@@ -10,9 +16,15 @@ Deux aides :
 
 import re
 from collections import Counter
+from dataclasses import dataclass, field
 from typing import Any
 
 import polars as pl
+
+from src.config import HOUSEHOLD_PARTICIPATION_CATEGORY, BusinessId
+from src.logic.categorizer import apply_rules
+from src.logic.household import KIND_CARD, KIND_PARTICIPATION, participation_expense, review_kind
+from src.logic.transfers import resolve_transfer_review
 
 # Priorité des règles créées depuis la file : au-dessus des règles génériques du seed
 USER_RULE_PRIORITY = 200
@@ -57,18 +69,198 @@ def suggest_pattern(tx: dict[str, Any]) -> str:
     return pattern if len(pattern) >= _MIN_PATTERN_LENGTH else (raw or label)
 
 
-def pending_transactions(df: pl.DataFrame, household: bool = False) -> pl.DataFrame:
-    """Opérations à classer : sans catégorie, hors virements et hors opérations encore
-    à vérifier (page Sync). household=True : celles du foyer, sinon celles du budget
-    perso et des activités pro."""
+TRANSFER = "transfer"
+
+# Affectations proposées, dans l'ordre d'affichage de la page
+AFFECTATIONS: dict[str, str] = {
+    TRANSFER: "Virement interne",
+    str(BusinessId.HOUSEHOLD): "Foyer",
+    str(BusinessId.PERSONAL): "Perso",
+    str(BusinessId.PHI_RISING): "Phi Rising",
+    str(BusinessId.BOOTH_IN_LYON): "Booth in Lyon",
+}
+_AFFECTATION_KEYS = {label: key for key, label in AFFECTATIONS.items()}
+
+REASON_CARD = "💳 Ta carte sur le commun"
+REASON_PARTICIPATION = "↘️ Ta participation"
+REASON_TRANSFER = "🔁 Virement entre tes comptes ?"
+REASON_CLASSIFY = "🏷️ À classer"
+
+
+def account_label(account: dict[str, Any]) -> str:
+    return f"{account['name']} ({account.get('institution') or '?'})"
+
+
+def inbox_rows(df: pl.DataFrame) -> pl.DataFrame:
+    """Opérations à traiter : à vérifier, ou sans catégorie (virements internes exclus)."""
     if df.is_empty():
         return df
     return df.filter(
-        (pl.col("category").is_null() | (pl.col("category") == ""))
-        & ~pl.col("is_transfer").fill_null(False)
-        & ~pl.col("needs_review").fill_null(False)
-        & ((pl.col("business_id") == "household") == household)
+        ~pl.col("is_transfer").fill_null(False)
+        & (
+            pl.col("needs_review").fill_null(False)
+            | pl.col("category").is_null()
+            | (pl.col("category") == "")
+        )
     )
+
+
+def inbox_reason(tx: dict[str, Any]) -> str:
+    """Pourquoi cette opération est dans la boîte de réception."""
+    if tx.get("needs_review"):
+        if tx.get("business_id") != str(BusinessId.HOUSEHOLD):
+            return REASON_TRANSFER
+        kind = review_kind(tx)
+        if kind == KIND_CARD:
+            return REASON_CARD
+        if kind == KIND_PARTICIPATION:
+            return REASON_PARTICIPATION
+    return REASON_CLASSIFY
+
+
+def proposed_affectation(tx: dict[str, Any]) -> str:
+    """Affectation affichée au départ : celle de l'opération, ou « virement interne » pour
+    un virement à confirmer."""
+    if inbox_reason(tx) == REASON_TRANSFER:
+        return TRANSFER
+    return tx["business_id"]
+
+
+def rule_updates(df: pl.DataFrame, rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ce que les règles changent sur des opérations déjà en base : catégorie, affectation,
+    et fin de la vérification d'une carte du commun reconnue.
+
+    Returns:
+        [{id, champ: valeur…}] — seules les opérations qui changent.
+    """
+    if df.is_empty() or not rules:
+        return []
+    original = {r["id"]: r for r in df.to_dicts()}
+    updates: list[dict[str, Any]] = []
+    for row in apply_rules(df, rules).to_dicts():
+        before = original[row["id"]]
+        fields: dict[str, Any] = {}
+        if row.get("category") and not before.get("category"):
+            fields["category"] = row["category"]
+        if row["business_id"] != before["business_id"]:
+            fields["business_id"] = row["business_id"]
+        if (
+            before.get("needs_review") and fields.get("category")
+            and review_kind(before) == KIND_CARD
+        ):
+            fields["needs_review"] = False
+        if fields:
+            updates.append({"id": row["id"], **fields})
+    return updates
+
+
+@dataclass
+class InboxPlan:
+    """Résultat de plan_inbox_changes : tout ce qu'il faut écrire, et ce qui a posé problème."""
+
+    updates: list[dict[str, Any]] = field(default_factory=list)       # [{id, champs…}]
+    legs: list[dict[str, Any]] = field(default_factory=list)          # 2e écriture des virements
+    participations: list[dict[str, Any]] = field(default_factory=list)  # dépenses perso à créer
+    rules: list[dict[str, Any]] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+
+def plan_inbox_changes(
+    originals: list[dict[str, Any]],
+    edited: list[dict[str, Any]],
+    accounts: list[dict[str, Any]],
+    categories: dict[str, dict[str, set[str]]],
+) -> InboxPlan:
+    """Transforme les lignes de la boîte de réception, telles qu'affichées, en modifications.
+
+    Enregistrer valide aussi les lignes à vérifier laissées telles quelles : une carte du
+    commun reste au foyer, une participation reste une participation.
+
+    Args:
+        originals: opérations en base (id, business_id, label, category, amount, needs_review…).
+        edited: lignes du tableau après modification, avec les clés Libellé, Affectation,
+            Catégorie, "Autre compte", Exceptionnel (ou None), Règle, Motif.
+        accounts: comptes actifs.
+        categories: {activité: {"expense": {noms}, "income": {noms}}}.
+    """
+    plan = InboxPlan()
+    by_id = {tx["id"]: tx for tx in originals}
+    accounts_by_label = {account_label(a): a for a in accounts}
+
+    for row in edited:
+        tx = by_id.get(row["id"])
+        if tx is None:
+            continue
+        name = tx["label"]
+        direction = "income" if float(tx["amount"]) > 0 else "expense"
+        affectation = _AFFECTATION_KEYS.get(row.get("Affectation") or "", proposed_affectation(tx))
+        fields: dict[str, Any] = {}
+
+        label = (row.get("Libellé") or "").strip()
+        if label and label != tx["label"]:
+            fields["label"] = label
+
+        # --- virement entre deux de tes comptes -------------------------------------------
+        if affectation == TRANSFER:
+            counterpart = accounts_by_label.get(row.get("Autre compte") or "")
+            if counterpart is None or counterpart["id"] == tx.get("account_id"):
+                plan.errors.append(f"« {name} » : choisis l'autre compte du virement.")
+                if fields:
+                    plan.updates.append({"id": tx["id"], **fields})
+                continue
+            updates, legs = resolve_transfer_review([{**tx, **fields}], {tx["id"]: counterpart})
+            plan.updates.append({**updates[0], **fields})
+            plan.legs.extend(legs)
+            continue
+
+        # --- affectation à un budget ------------------------------------------------------
+        if affectation != tx["business_id"]:
+            fields["business_id"] = affectation
+
+        valid = categories.get(affectation, {}).get(direction, set())
+        chosen = row.get("Catégorie") or None
+        if chosen and chosen not in valid:
+            plan.errors.append(
+                f"« {name} » : la catégorie « {chosen} » n'existe pas pour {AFFECTATIONS[affectation]} "
+                "(catégorie non appliquée)."
+            )
+            chosen = None
+
+        current = tx.get("category") or None
+        if chosen:
+            final = chosen
+        elif current and current in valid:
+            final = current  # affectation inchangée, ou catégorie aussi valable dans le nouveau budget
+        else:
+            final = None
+        if final != current:
+            fields["category"] = final
+
+        if tx.get("needs_review"):
+            fields["needs_review"] = False
+
+        exceptional = row.get("Exceptionnel")
+        if exceptional is not None and bool(exceptional) != bool(tx.get("is_exceptional")):
+            fields["is_exceptional"] = bool(exceptional)
+
+        if fields:
+            plan.updates.append({"id": tx["id"], **fields})
+
+        # Ta participation validée en « Participation Charlotte » crée ta dépense perso
+        if (
+            review_kind(tx) == KIND_PARTICIPATION
+            and affectation == str(BusinessId.HOUSEHOLD)
+            and final == HOUSEHOLD_PARTICIPATION_CATEGORY
+        ):
+            plan.participations.append(participation_expense(tx))
+
+        # Règle : les prochaines opérations avec ce motif se rangent seules
+        pattern = (row.get("Motif") or "").strip()
+        if row.get("Règle") and chosen and pattern:
+            target = affectation if affectation != tx["business_id"] else None
+            plan.rules.append(build_rule(pattern, chosen, tx["business_id"], direction, target))
+
+    return plan
 
 
 def category_suggestions_from_history(history: pl.DataFrame) -> dict[tuple[str, str], str]:
@@ -108,8 +300,13 @@ def build_rule(
     category: str,
     business_id: str,
     direction: str | None = None,
+    target_business_id: str | None = None,
 ) -> dict[str, Any]:
-    """Règle de catégorisation à enregistrer depuis la file."""
+    """Règle de catégorisation à enregistrer depuis la boîte de réception.
+
+    business_id : le budget des opérations visées ; target_business_id : le budget où les
+    ranger si différent (None = elles restent où elles sont).
+    """
     return {
         "pattern": pattern.strip(),
         "category": category,
@@ -117,4 +314,5 @@ def build_rule(
         "priority": USER_RULE_PRIORITY,
         "is_active": True,
         "direction": direction,
+        "target_business_id": target_business_id,
     }

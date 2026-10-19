@@ -302,6 +302,32 @@ def read_recurring_transactions() -> pl.DataFrame:
     )
 
 
+def read_manual_candidates(
+    business_id: str,
+    rows: list[dict],
+    window_days: int,
+) -> list[dict]:
+    """Saisies manuelles pas encore rattachées à un relevé, autour des dates des lignes.
+
+    Sert au rapprochement avec un import (une saisie déjà faite n'est pas recréée).
+    """
+    from datetime import timedelta
+
+    dates = [Date.fromisoformat(str(r["date"])[:10]) for r in rows]
+    window = timedelta(days=window_days)
+    df = read_transactions(
+        business_id=business_id,
+        date_from=min(dates) - window,
+        date_to=max(dates) + window,
+        include_transfers=True,
+    )
+    if df.is_empty():
+        return []
+    return df.filter(
+        (pl.col("source") == "manual") & pl.col("external_id").is_null()
+    ).to_dicts()
+
+
 def _fetch_pages(query, page_size: int = _PAGE_SIZE, max_rows: int = _TXN_LIMIT) -> list[dict]:
     """Exécute une requête page par page jusqu'à épuisement des lignes."""
     rows: list[dict] = []

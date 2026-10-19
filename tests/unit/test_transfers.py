@@ -122,3 +122,10 @@ class TestResolveTransferReview:
         tx = _row("VIR INST PARIS CHARLOTTE", -10.0, PERSO, id="t1")
         _, legs = resolve_transfer_review([tx], {"t1": ACCOUNTS[0]})
         assert legs == []
+
+
+def test_second_leg_of_a_transfer_to_the_joint_account_is_household():
+    tx = _row("VIR X", -100.0, PERSO, id="t1")
+    joint = {"id": "acc-commun", "name": "Compte commun", "owner": "personal"}
+    _, legs = resolve_transfer_review([tx], {"t1": joint})
+    assert legs[0]["business_id"] == "household"

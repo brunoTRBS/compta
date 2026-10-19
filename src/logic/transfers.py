@@ -22,6 +22,7 @@ from datetime import date as Date
 from typing import Any
 
 from src.config import JOINT_OWN_NAME_PATTERNS, BusinessId
+from src.logic.scopes import default_business_id
 
 # La banque peut passer les deux côtés d'un virement à 1-3 jours d'écart
 TRANSFER_MATCH_WINDOW_DAYS = 3
@@ -217,7 +218,7 @@ def resolve_transfer_review(
             "amount": -float(tx["amount"]),
             "label": tx["label"],
             "source": "manual",
-            "business_id": account["owner"],
+            "business_id": default_business_id(account),
             "account_id": account["id"],
             "category": None,
             "is_transfer": True,

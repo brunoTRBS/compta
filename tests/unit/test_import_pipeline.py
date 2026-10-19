@@ -313,3 +313,26 @@ def test_pipeline_flags_household_exceptional_after_categorization(_rules, mock_
     assert inserted["a"]["category"] == "Salaire Bruno"
     assert inserted["a"]["is_exceptional"] is False
     assert inserted["b"]["is_exceptional"] is True
+
+
+@patch("src.logic.import_pipeline.bulk_upsert_transactions")
+@patch("src.logic.import_pipeline.fetch_categorization_rules", return_value=[
+    {"pattern": "LECLERC", "business_id": "household", "category": "Courses",
+     "direction": "expense", "priority": 150},
+])
+def test_pipeline_confirms_joint_card_purchase_recognised_by_a_rule(_rules, mock_upsert):
+    """Leclerc avec ta carte du commun : décision déjà prise, rien à vérifier."""
+    base = {"business_id": "household", "category": None, "date": "2026-10-12",
+            "account_id": "c", "needs_review": True, "is_exceptional": False}
+    rows = [
+        {**base, "external_id": "a", "amount": -43.06,
+         "label": "PAIEMENT PSC BEYNOST E LECLERC CARTE 3935 HIR0",
+         "raw_label": "PAIEMENT PSC BEYNOST E LECLERC CARTE 3935 HIR0"},
+        {**base, "external_id": "b", "amount": -12.0,
+         "label": "PAIEMENT CB LYON INCONNU CARTE 3935 HIR0",
+         "raw_label": "PAIEMENT CB LYON INCONNU CARTE 3935 HIR0"},
+    ]
+    run_full_pipeline(rows, set(), "bank")
+    inserted = {t["external_id"]: t for t in mock_upsert.call_args[0][0]}
+    assert inserted["a"]["category"] == "Courses" and inserted["a"]["needs_review"] is False
+    assert inserted["b"]["category"] is None and inserted["b"]["needs_review"] is True

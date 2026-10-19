@@ -5,9 +5,7 @@ from src.logic.household import (
     KIND_CARD,
     KIND_PARTICIPATION,
     classify_joint_transactions,
-    default_counts_in_budget,
     participation_expense,
-    resolve_review,
     review_kind,
 )
 
@@ -59,11 +57,6 @@ def test_classify_marks_everything_household():
     assert [r["needs_review"] for r in result] == [True, False, True, False]
 
 
-def test_defaults_participation_checked_card_unchecked():
-    assert default_counts_in_budget(PARTICIPATION) is True
-    assert default_counts_in_budget(OWN_CARD) is False
-
-
 def test_participation_expense():
     exp = participation_expense(PARTICIPATION)
     assert exp["amount"] == -950.0
@@ -71,31 +64,6 @@ def test_participation_expense():
     assert exp["business_id"] == "personal"
     assert exp["business_id"] == "personal"
     assert exp["external_id"] == "cm_abc_part"
-
-
-class TestResolveReview:
-    def test_card_kept_leaves_household(self):
-        updates, parts = resolve_review([OWN_CARD], {"t1": True})
-        assert updates == [{"id": "t1", "business_id": "personal", "needs_review": False}]
-        assert parts == []
-
-    def test_card_not_kept_stays_household(self):
-        updates, _ = resolve_review([OWN_CARD], {"t1": False})
-        assert updates[0]["business_id"] == "household"
-        assert updates[0]["needs_review"] is False
-
-    def test_participation_kept_creates_expense_but_stays_household(self):
-        updates, parts = resolve_review([PARTICIPATION], {"t1": True})
-        assert updates[0]["business_id"] == "household"
-        assert len(parts) == 1 and parts[0]["amount"] == -950.0
-
-    def test_participation_not_kept_creates_nothing(self):
-        _, parts = resolve_review([PARTICIPATION], {"t1": False})
-        assert parts == []
-
-    def test_missing_choice_uses_default(self):
-        _, parts = resolve_review([PARTICIPATION], {})
-        assert len(parts) == 1
 
 
 def test_is_household():

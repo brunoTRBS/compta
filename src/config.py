@@ -29,6 +29,9 @@ JOINT_OWN_NAME_PATTERNS = ("CHARLOTTE PARIS", "PARIS CHARLOTTE")
 # Le revenu correspondant est déjà compté dans le bénéfice Phi Rising.
 PARTICIPATION_LABEL = "Participation foyer (loyer + charges)"
 PARTICIPATION_CATEGORY = "Loyer"
+# Catégorie (rentrée du foyer) d'un virement reçu de sa part : la classer ainsi crée sa
+# dépense « Participation foyer » dans le budget perso.
+HOUSEHOLD_PARTICIPATION_CATEGORY = "Participation Charlotte"
 
 # Sorties du compte commun qui ne sont pas des dépenses communes : affichées à part
 HOUSEHOLD_NON_COMMON_CATEGORIES = ("Achats perso Bruno", "Épargne Bruno")
