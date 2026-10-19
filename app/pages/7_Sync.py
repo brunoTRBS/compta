@@ -1,4 +1,4 @@
-"""Page Synchronisation — import des relevés CSV (BoursoBank, Crédit Mutuel) et Stripe."""
+"""Page Synchronisation — import des relevés CSV (BoursoBank, Crédit Mutuel, Hello Bank) et Stripe."""
 
 import time
 from datetime import date, timedelta
@@ -25,6 +25,7 @@ from src.logic.inbox import inbox_rows
 from src.logic.reconciliation import statement_closing_balance
 from src.logic.statement_parser import (
     BANK_BOURSOBANK,
+    BANK_HELLO_BANK,
     UnknownStatementFormat,
     map_statement_transaction,
     parse_statement,
@@ -44,9 +45,9 @@ from src.services.supabase import (
 st.set_page_config(page_title="Synchronisation", page_icon="🔄", layout="wide")
 require_auth()
 page_title("Synchronisation des données", "sync")
-st.caption("Importe les relevés bancaires (CSV BoursoBank, Crédit Mutuel) et les paiements (Stripe).")
+st.caption("Importe les relevés bancaires (CSV BoursoBank, Crédit Mutuel, Hello Bank) et les paiements (Stripe).")
 
-_BANK_LABELS = {BANK_BOURSOBANK: "BoursoBank"}
+_BANK_LABELS = {BANK_BOURSOBANK: "BoursoBank", BANK_HELLO_BANK: "Hello Bank"}
 _BANK_LABEL_DEFAULT = "Crédit Mutuel"
 
 # La participation peut être saisie à la main n'importe quand dans le mois :
@@ -129,7 +130,7 @@ st.caption(
 )
 
 uploaded_files = st.file_uploader(
-    "Relevés CSV (BoursoBank, Crédit Mutuel)",
+    "Relevés CSV (BoursoBank, Crédit Mutuel, Hello Bank)",
     type=["csv"],
     accept_multiple_files=True,
     key="bank_csv",

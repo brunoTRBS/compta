@@ -1,4 +1,4 @@
-"""Parseurs des relevés bancaires CSV (BoursoBank, Crédit Mutuel).
+"""Parseurs des relevés bancaires CSV (BoursoBank, Crédit Mutuel, Hello Bank).
 
 Chaque ligne parsée porte le n° de compte d'où elle vient, ce qui permet à la
 page Sync de reconnaître le compte toute seule (accounts.bank_account_number).
@@ -14,8 +14,9 @@ from typing import Any
 
 BANK_BOURSOBANK = "boursobank"
 BANK_CREDIT_MUTUEL = "credit_mutuel"
+BANK_HELLO_BANK = "hello_bank"
 
-_EXTERNAL_ID_PREFIX = {BANK_BOURSOBANK: "bourso", BANK_CREDIT_MUTUEL: "cm"}
+_EXTERNAL_ID_PREFIX = {BANK_BOURSOBANK: "bourso", BANK_CREDIT_MUTUEL: "cm", BANK_HELLO_BANK: "hello"}
 
 # Catégorie BoursoBank qui ne porte aucune information
 _BOURSO_UNCATEGORIZED = "non catégorisé"
@@ -31,8 +32,14 @@ _B_DATE, _B_LABEL, _B_SUGGESTED, _B_CATEGORY, _B_AMOUNT, _B_ACCOUNT, _B_BALANCE 
 _CM_DATE, _CM_DEBIT, _CM_CREDIT, _CM_LABEL, _CM_BALANCE = 0, 2, 3, 4, 5
 
 
+# Colonnes Hello Bank (compte pro), sans ligne d'en-tête de colonnes :
+#   1re ligne : type de compte;type de compte;****9077;date de l'export;;solde
+#   puis : date opération;type;libellé court;libellé complet;date valeur;montant
+_H_DATE, _H_LABEL, _H_AMOUNT = 0, 3, 5
+
+
 class UnknownStatementFormat(ValueError):
-    """Le fichier n'est ni un export BoursoBank ni un export Crédit Mutuel."""
+    """Le fichier n'est ni un export BoursoBank, ni Crédit Mutuel, ni Hello Bank."""
 
 
 def _decode(content: bytes | str) -> str:
@@ -58,12 +65,76 @@ def detect_bank(content: bytes | str) -> str | None:
     rows = _rows(_decode(content))
     if not rows:
         return None
+    if _is_hello_bank_header(rows[0]):
+        return BANK_HELLO_BANK
     header = [c.strip().lower() for c in rows[0]]
     if header and header[0] in ("dateop", "date opération"):
         return BANK_BOURSOBANK
     if header[:2] == ["date", "date de valeur"]:
         return BANK_CREDIT_MUTUEL
     return None
+
+
+def _is_hello_bank_header(row: list[str]) -> bool:
+    """1re ligne d'un export Hello Bank : n° de compte masqué (****9077) puis une date."""
+    return (
+        len(row) >= 6
+        and re.fullmatch(r"\*+\d{3,}", _cell(row, 2)) is not None
+        and _parse_fr_date(_cell(row, 3)) is not None
+    )
+
+
+def _hello_bank_label(raw: str) -> str:
+    """Libellé lisible d'une ligne Hello Bank (le libellé complet est gardé en raw_label)."""
+    text = " ".join(raw.split())
+    if match := re.match(r"FACTURE CARTE DU \d{6} (.+?) CARTE\b", text):
+        return match.group(1).strip()
+    if match := re.match(r"PRLV SEPA (.+?) (?:ECH|ID EMETTEUR)\b", text):
+        return f"Prélèvement {match.group(1).strip()}"
+    if match := re.search(r"/FRM (.+?) /EID", text):
+        return f"Virement de {match.group(1).strip()}"
+    if match := re.search(r"/BEN (.+?) /REF", text):
+        motive = re.search(r"/MOTIF (.+?) /BEN", text)
+        return f"Virement vers {match.group(1).strip()}" + (f" ({motive.group(1).strip()})" if motive else "")
+    if text.startswith("COMMISSIONS HELLO BUSINESS"):
+        return "Commission Hello Business"
+    if text.startswith("RETRAIT DAB"):
+        return "Retrait distributeur"
+    return text
+
+
+def parse_hello_bank_csv(content: bytes | str) -> list[dict[str, Any]]:
+    """Parse un export CSV Hello Bank (compte pro).
+
+    Le n° de compte (masqué : ****9077) et le solde du compte sont sur la 1re ligne ;
+    le solde est rattaché à la dernière opération pour le contrôle des comptes.
+
+    Returns:
+        list[{date, amount, label, suggested_label, bank_category, account_number, balance}]
+    """
+    rows = _rows(_decode(content))
+    if not rows or not _is_hello_bank_header(rows[0]):
+        return []
+    account_number = _cell(rows[0], 2)
+    results: list[dict[str, Any]] = []
+    for row in rows[1:]:
+        date_str = _parse_fr_date(_cell(row, _H_DATE))
+        label = " ".join(_cell(row, _H_LABEL).split())
+        amount = _parse_amount(_cell(row, _H_AMOUNT))
+        if not date_str or not label or amount is None:
+            continue
+        results.append({
+            "date": date_str,
+            "amount": amount,
+            "label": label,
+            "suggested_label": _hello_bank_label(label),
+            "bank_category": None,
+            "account_number": account_number,
+            "balance": None,
+        })
+    if results:
+        results[-1]["balance"] = _parse_amount(_cell(rows[0], 5))
+    return results
 
 
 def parse_boursobank_csv(content: bytes | str) -> list[dict[str, Any]]:
@@ -153,9 +224,11 @@ def parse_statement(content: bytes | str, filename: str | None = None) -> tuple[
         rows = parse_boursobank_csv(text)
     elif bank == BANK_CREDIT_MUTUEL:
         rows = parse_credit_mutuel_csv(text, account_number_from_filename(filename))
+    elif bank == BANK_HELLO_BANK:
+        rows = parse_hello_bank_csv(text)
     else:
         raise UnknownStatementFormat(
-            "Format de relevé non reconnu (attendu : export CSV BoursoBank ou Crédit Mutuel)."
+            "Format de relevé non reconnu (attendu : export CSV BoursoBank, Crédit Mutuel ou Hello Bank)."
         )
 
     # Deux opérations identiques le même jour (2 cafés au même endroit) doivent
