@@ -1,15 +1,15 @@
 """Page Budget Foyer — rentrées et dépenses du compte commun."""
 
 import calendar
-from datetime import date
+from datetime import date, timedelta
 
 import plotly.express as px
 import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.breakdown_section import render_spending_breakdown
 from src.config import HOUSEHOLD_NON_COMMON_CATEGORIES, JOINT_ACCOUNT_NAME, BusinessId
-from src.logic.budget import breakdown_by_category
 from src.logic.household_budget import (
     common_expenses,
     contributions,
@@ -127,14 +127,13 @@ with col_out:
             column_config={"Montant": st.column_config.NumberColumn(format="%.2f €")},
         )
 
-st.markdown("**Dépenses communes par catégorie**")
-breakdown = breakdown_by_category(common_expenses(month_df))
-if breakdown.is_empty():
-    st.caption("Aucune dépense commune ce mois-ci.")
-else:
-    fig = px.pie(breakdown.to_pandas(), values="total", names="category", hole=0.4)
-    fig.update_traces(textinfo="percent+label", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+st.markdown("**Où part l'argent du foyer**")
+prev_end = month_start - timedelta(days=1)
+prev_month_df = regular.filter(pl.col("date").is_between(prev_end.replace(day=1), prev_end))
+render_spending_breakdown(
+    common_expenses(month_df), common_expenses(prev_month_df), key="foyer_breakdown",
+    empty_message="Aucune dépense commune ce mois-ci.",
+)
 
 st.divider()
 

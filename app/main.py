@@ -41,5 +41,6 @@ Utilisez le menu de navigation à gauche pour accéder aux modules :
 | 4b | **Budget Foyer** | Compte commun : rentrées, dépenses communes, qui met quoi, opérations exceptionnelles |
 | 5 | **Patrimoine** | Bilan des comptes et évolution patrimoniale |
 | 6 | **Sync** | Import des relevés bancaires (CSV) & synchro Stripe |
+| 8 | **Règles** | Voir, corriger et tester les règles de catégorisation automatique |
 | 7 | **Paramètres** | Statut des connexions, gestion du cache |
 """)

@@ -384,6 +384,28 @@ def insert_categorization_rule(rule: dict[str, Any]) -> dict[str, Any]:
     return get_supabase().table("categorization_rules").insert(rule).execute().data[0]
 
 
+def fetch_all_categorization_rules() -> list[dict[str, Any]]:
+    """Toutes les règles, actives ou non (page Règles), par priorité décroissante."""
+    return (
+        get_supabase()
+        .table("categorization_rules")
+        .select("*")
+        .order("priority", desc=True)
+        .execute()
+        .data
+    )
+
+
+def update_categorization_rule(rule_id: str, fields: dict[str, Any]) -> None:
+    """Modifie une règle de catégorisation."""
+    get_supabase().table("categorization_rules").update(fields).eq("id", rule_id).execute()
+
+
+def delete_categorization_rule(rule_id: str) -> None:
+    """Supprime une règle de catégorisation."""
+    get_supabase().table("categorization_rules").delete().eq("id", rule_id).execute()
+
+
 # ---------------------------------------------------------------------------
 # Categories
 # ---------------------------------------------------------------------------

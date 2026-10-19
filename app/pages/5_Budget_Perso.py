@@ -8,6 +8,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.breakdown_section import render_spending_breakdown
 from app.components.recurring_section import render_recurring_section
 from app.components.transaction_table import render_editable_transactions
 from app.components.transfer_section import render_transfer_section
@@ -17,8 +18,8 @@ from src.config import (
     PERSO_OPENING_BALANCE_YEAR,
     BusinessId,
 )
+from src.logic.breakdown import household_overview
 from src.logic.budget import (
-    breakdown_by_category,
     compute_budget_summary,
     compute_cumulative_balance,
 )
@@ -286,19 +287,36 @@ with tab_monthly:
 
     st.divider()
 
-    st.subheader("Répartition des dépenses")
-    breakdown = breakdown_by_category(df)
-    if not breakdown.is_empty():
-        fig = px.pie(
-            breakdown.head(10).to_pandas(),
-            values="total",
-            names="category",
-            hole=0.4,
+    st.subheader("Où part l'argent")
+    include_foyer = st.toggle(
+        "Ajouter les dépenses communes du foyer (vue d'ensemble)",
+        key="perso_overview",
+        help="Tes dépenses perso + les dépenses communes du compte commun. Ta participation "
+             "(catégorie « Loyer ») n'est comptée qu'une fois, via les vraies dépenses du foyer.",
+    )
+    try:
+        prev_df = read_transactions(
+            business_id=str(BusinessId.PERSONAL), year=prev_year, month=prev_month,
         )
-        fig.update_traces(textinfo="percent+label", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Aucune dépense catégorisée sur la période.")
+        if include_foyer:
+            foyer_now = read_transactions(
+                business_id=str(BusinessId.HOUSEHOLD), year=year, month=selected_month,
+            )
+            foyer_before = read_transactions(
+                business_id=str(BusinessId.HOUSEHOLD), year=prev_year, month=prev_month,
+            )
+            spend_now = household_overview(df, foyer_now)
+            # Sans données du foyer le mois précédent, la comparaison serait faussée
+            spend_before = household_overview(prev_df, foyer_before) if not foyer_before.is_empty() else None
+        else:
+            spend_now, spend_before = df, prev_df
+    except Exception as exc:
+        st.error(f"Impossible de charger la répartition : {exc}")
+        spend_now, spend_before = df, None
+    render_spending_breakdown(
+        spend_now, spend_before, key="perso_breakdown",
+        empty_message="Aucune dépense catégorisée sur la période.",
+    )
 
 # ---------------------------------------------------------------------------
 # Onglet Vue globale

@@ -7,6 +7,7 @@ import plotly.express as px
 import polars as pl
 import streamlit as st
 
+from app.components.breakdown_section import render_spending_breakdown
 from app.components.recurring_section import render_recurring_section
 from app.components.transaction_table import render_editable_transactions
 from app.components.transfer_section import render_transfer_section
@@ -14,7 +15,6 @@ from src.config import BusinessId
 from src.logic.categorizer import apply_rules, categorization_stats, get_pending_categorization
 from src.logic.revenue import (
     _MONTH_LABELS,
-    aggregate_expenses_by_category,
     aggregate_monthly_from_df,
     aggregate_revenue_by_category,
     compute_ytd_summary,
@@ -107,31 +107,17 @@ def _render_monthly_view(business_id: BusinessId) -> None:
 
     st.divider()
 
-    # --- Tableau dépenses par catégorie ---
+    # --- Dépenses par catégorie, avec variation sur le mois précédent ---
     st.subheader("Dépenses par catégorie")
-    exp_df = aggregate_expenses_by_category(df)
-    if exp_df.is_empty():
-        st.info("Aucune dépense sur ce mois.")
-    else:
-        totals_exp = pl.DataFrame({
-            "category": ["Total"],
-            "total": [exp_df["total"].sum()],
-            "pct": [100.0],
-        })
-        display_exp = pl.concat([exp_df, totals_exp]).rename({
-            "category": "Catégorie",
-            "total": "Total (€)",
-            "pct": "%",
-        })
-        st.dataframe(
-            display_exp.to_pandas(),
-            width='stretch',
-            hide_index=True,
-            column_config={
-                "Total (€)": st.column_config.NumberColumn(format="%.2f €"),
-                "%": st.column_config.NumberColumn(format="%.1f %%"),
-            },
-        )
+    prev_year, prev_month = (year, month - 1) if month > 1 else (year - 1, 12)
+    try:
+        prev_df = read_transactions(business_id=str(business_id), year=prev_year, month=prev_month)
+    except Exception:
+        prev_df = None
+    render_spending_breakdown(
+        df, prev_df, key=f"pro_breakdown_{business_id}", by="category",
+        empty_message="Aucune dépense sur ce mois.",
+    )
 
     st.divider()
 
