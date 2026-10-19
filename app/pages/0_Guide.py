@@ -197,7 +197,7 @@ with tab_pages:
         ],
         [
             "corrige ou ajoute une opération à la main (espèces) dans **Transactions**",
-            "choisis le mois dans la barre latérale de la Vue mensuelle",
+            "choisis l'année et le mois en haut de la Vue mensuelle",
             "active **Ajouter les dépenses communes du foyer** pour la vue d'ensemble (ta participation n'est comptée qu'une fois)",
         ],
         "En octobre : Revenus 3 120 €, Dépenses 1 480 €, Épargne 300 € → Différence 1 340 €. Tu vois que « Alimentation » monte de 12 % : tu ouvres le groupe pour voir quelle catégorie.",
@@ -241,7 +241,7 @@ with tab_pages:
             "l'évolution de l'année, budget par budget",
             "le détail par compte réel (flux du mois + solde) et les mouvements internes",
         ],
-        ["choisis l'année et le mois dans la barre latérale"],
+        ["choisis l'année et le mois en haut de la page"],
         "Tu veux savoir ce que « rapporte » le mois : tu lis la colonne Total (Perso + Phi + Booth). Le Foyer est à part : il contient les revenus de Bruno.",
     )
     _page(

@@ -161,17 +161,18 @@ with tab_transfer:
 # ---------------------------------------------------------------------------
 with tab_monthly:
     tab_help("perso_mensuelle")
-    with st.sidebar:
-        st.subheader("Filtres — Vue mensuelle")
-        current_year_m = date.today().year
-        current_month_m = date.today().month
-        year = st.selectbox("Année", [current_year_m, current_year_m - 1], key="year_perso")
-        month_labels = list(_MONTH_LABELS.values())
-        default_month_idx = current_month_m - 1
-        selected_month_label = st.selectbox(
-            "Mois", month_labels, index=default_month_idx, key="month_perso"
+    col_year_m, col_month_m = st.columns(2)
+    with col_year_m:
+        # Du début du suivi à l'année en cours (le sélecteur ne se limite plus à 2 ans)
+        year = st.selectbox(
+            "Année", list(range(date.today().year, PERSO_OPENING_BALANCE_YEAR - 1, -1)), key="year_perso"
         )
-        selected_month = month_labels.index(selected_month_label) + 1
+    with col_month_m:
+        month_labels = list(_MONTH_LABELS.values())
+        selected_month_label = st.selectbox(
+            "Mois", month_labels, index=date.today().month - 1, key="month_perso"
+        )
+    selected_month = month_labels.index(selected_month_label) + 1
 
     # Mois N-1 (pour l'affichage du libellé uniquement)
     prev_month = selected_month - 1 if selected_month > 1 else 12

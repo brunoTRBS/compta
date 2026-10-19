@@ -8,7 +8,7 @@ import streamlit as st
 
 from app.components.auth import require_auth
 from app.components.help import page_title
-from src.config import BusinessId
+from src.config import PERSO_OPENING_BALANCE_YEAR, BusinessId
 from src.logic.budget import compute_budget_summary
 from src.logic.consolidated import flows_per_account, pair_transfers
 from src.logic.household_budget import regular_operations
@@ -30,18 +30,18 @@ _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
 _MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
 
 # ---------------------------------------------------------------------------
-# Filtres sidebar
+# Période
 # ---------------------------------------------------------------------------
-with st.sidebar:
-    st.subheader("Filtres")
-    current_year = date.today().year
-    current_month = date.today().month
-    year = st.selectbox("Année", [current_year, current_year - 1], key="year_consolidee")
-    default_month_idx = current_month - 1
-    selected_month_label = st.selectbox(
-        "Mois", _MONTHS_LIST, index=default_month_idx, key="month_consolidee"
+col_year, col_month = st.columns(2)
+with col_year:
+    year = st.selectbox(
+        "Année", list(range(date.today().year, PERSO_OPENING_BALANCE_YEAR - 1, -1)), key="year_consolidee"
     )
-    selected_month = _MONTHS_MAP[selected_month_label]
+with col_month:
+    selected_month_label = st.selectbox(
+        "Mois", _MONTHS_LIST, index=date.today().month - 1, key="month_consolidee"
+    )
+selected_month = _MONTHS_MAP[selected_month_label]
 
 period_label = f"{selected_month_label} {year}"
 
