@@ -21,13 +21,13 @@ import uuid
 from datetime import date as Date
 from typing import Any
 
-from src.config import JOINT_OWN_NAME_PATTERNS, BusinessId
+from src.config import JOINT_ACCOUNT_NAME, JOINT_OWN_NAME_PATTERNS, BusinessId
 from src.logic.scopes import default_business_id
 
 # La banque peut passer les deux côtés d'un virement à 1-3 jours d'écart
 TRANSFER_MATCH_WINDOW_DAYS = 3
 
-_TRANSFER_KEYWORDS = ("LIVRET", "EPARGNE", "ÉPARGNE")
+_TRANSFER_KEYWORDS = ("LIVRET", "EPARGNE", "ÉPARGNE", "COMPTE COMMUN")
 _TRANSFER_NOTE = "Créé automatiquement depuis le relevé bancaire"
 
 
@@ -176,7 +176,12 @@ def detect_transfers(
 
 def default_counterpart(tx: dict[str, Any], accounts: list[dict[str, Any]]) -> dict | None:
     """Compte proposé par défaut comme 2e côté : le Livret pour un virement sortant,
-    le compte pro Phi Rising pour un virement reçu (le virement mensuel du pro)."""
+    le compte pro Phi Rising pour un virement reçu (le virement mensuel du pro) ;
+    le compte commun quand le libellé le nomme (« … BEN COMPTE COMMUN »)."""
+    if "COMPTE COMMUN" in _bank_label(tx):
+        joint = next((a for a in accounts if a.get("name") == JOINT_ACCOUNT_NAME), None)
+        if joint and joint["id"] != tx.get("account_id"):
+            return joint
     if float(tx["amount"]) < 0:
         wanted = lambda a: a.get("type") == "savings"  # noqa: E731
     else:

@@ -15,13 +15,14 @@ Deux aides :
 """
 
 import re
+import uuid
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
 import polars as pl
 
-from src.config import HOUSEHOLD_PARTICIPATION_CATEGORY, BusinessId
+from src.config import HOUSEHOLD_PARTICIPATION_CATEGORY, JOINT_ACCOUNT_NAME, BusinessId
 from src.logic.categories import resolve_category
 from src.logic.categorizer import apply_rules
 from src.logic.household import KIND_CARD, KIND_PARTICIPATION, participation_expense, review_kind
@@ -208,6 +209,15 @@ def plan_inbox_changes(
                 plan.errors.append(f"« {name} » : choisis l'autre compte du virement.")
                 if fields:
                     plan.updates.append({"id": tx["id"], **fields})
+                continue
+            if counterpart["name"] == JOINT_ACCOUNT_NAME:
+                # Le compte commun a son propre relevé : on ne crée pas son côté, la ligne
+                # est seulement sortie des revenus / dépenses (la participation du foyer se
+                # traite sur la ligne reçue côté commun).
+                plan.updates.append({
+                    "id": tx["id"], "needs_review": False, "is_transfer": True,
+                    "transfer_group_id": str(uuid.uuid4()), **fields,
+                })
                 continue
             updates, legs = resolve_transfer_review([{**tx, **fields}], {tx["id"]: counterpart})
             plan.updates.append({**updates[0], **fields})

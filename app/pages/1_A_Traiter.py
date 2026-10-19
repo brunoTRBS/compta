@@ -9,7 +9,7 @@ import streamlit as st
 from app.components.auth import require_auth
 from app.components.help import page_title
 from app.components.reconciliation_section import render_reconciliation_section
-from src.config import JOINT_ACCOUNT_NAME, BusinessId
+from src.config import BusinessId
 from src.logic.household import propose_exceptional
 from src.logic.household_budget import retro_classify
 from src.logic.import_pipeline import match_manual_entries
@@ -113,7 +113,7 @@ else:
         "Charlotte » crée ta dépense « Participation foyer » dans ton budget perso."
     )
 
-    transfer_options = [account_label(a) for a in accounts if a["name"] != JOINT_ACCOUNT_NAME]
+    transfer_options = [account_label(a) for a in accounts]
     affectation_labels = list(AFFECTATIONS.values())
     frames: dict[str, Any] = {}
 

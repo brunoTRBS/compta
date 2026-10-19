@@ -295,3 +295,24 @@ class TestRuleUpdates:
     def test_nothing_matches(self):
         other = _op("o", "BOULANGERIE", -3.0, business_id="household")
         assert rule_updates(self._df(other), self.RULES) == []
+
+
+def test_transfer_to_joint_account_marks_one_side_without_creating_a_leg():
+    from src.logic.inbox import plan_inbox_changes
+    from src.logic.transfers import TRANSFER_MATCH_WINDOW_DAYS  # noqa: F401
+
+    pro = {"id": "pro", "name": "Compte pro", "institution": "Hello Bank", "owner": "phi_rising"}
+    joint = {"id": "joint", "name": "Compte commun", "institution": "Crédit Mutuel", "owner": "personal"}
+    tx = {
+        "id": "t1", "label": "Virement vers COMPTE COMMUN", "business_id": "phi_rising",
+        "account_id": "pro", "amount": -650.0, "date": "2026-10-03", "needs_review": True,
+        "category": None,
+    }
+    edited = [{"id": "t1", "Libellé": tx["label"], "Affectation": "Virement interne",
+               "Autre compte": "Compte commun (Crédit Mutuel)"}]
+    plan = plan_inbox_changes([tx], edited, [pro, joint], {})
+    assert plan.legs == []
+    assert plan.errors == []
+    assert plan.updates[0]["is_transfer"] is True
+    assert plan.updates[0]["needs_review"] is False
+    assert plan.updates[0]["transfer_group_id"]

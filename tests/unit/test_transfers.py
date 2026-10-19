@@ -129,3 +129,17 @@ def test_second_leg_of_a_transfer_to_the_joint_account_is_household():
     joint = {"id": "acc-commun", "name": "Compte commun", "owner": "personal"}
     _, legs = resolve_transfer_review([tx], {"t1": joint})
     assert legs[0]["business_id"] == "household"
+
+
+def test_transfer_to_joint_account_is_detected_and_proposed():
+    from src.logic.transfers import default_counterpart, is_transfer_like
+
+    pro = {"id": "pro", "name": "Compte pro", "owner": "phi_rising", "type": "checking"}
+    joint = {"id": "joint", "name": "Compte commun", "owner": "personal", "type": "checking"}
+    savings = {"id": "liv", "name": "Livret", "owner": "personal", "type": "savings"}
+    tx = {
+        "business_id": "phi_rising", "account_id": "pro", "amount": -650.0,
+        "raw_label": "VIR SEPA INST EMIS /MOTIF LOYER /BEN COMPTE COMMUN /REFDO 1F38",
+    }
+    assert is_transfer_like(tx)
+    assert default_counterpart(tx, [pro, savings, joint]) == joint
