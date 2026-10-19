@@ -11,11 +11,12 @@ class BusinessId(StrEnum):
     PHI_RISING = "phi_rising"
     BOOTH_IN_LYON = "booth_in_lyon"
     PERSONAL = "personal"
+    HOUSEHOLD = "household"  # compte commun : budget du foyer (ex-indicateur is_household)
 
 
 # Compte commun du foyer : ses transactions ne doivent pas entrer telles quelles
 # dans le budget perso (dépenses du conjoint, prêt, charges couvertes par la
-# participation mensuelle) — elles sont importées en is_household.
+# participation mensuelle) — elles sont importées sous l'activité « household ».
 JOINT_ACCOUNT_NAME = "Compte commun"
 
 # Repères pour trier les opérations du compte commun (voir logic/household.py) :
@@ -28,6 +29,15 @@ JOINT_OWN_NAME_PATTERNS = ("CHARLOTTE PARIS", "PARIS CHARLOTTE")
 # Le revenu correspondant est déjà compté dans le bénéfice Phi Rising.
 PARTICIPATION_LABEL = "Participation foyer (loyer + charges)"
 PARTICIPATION_CATEGORY = "Loyer"
+
+# Sorties du compte commun qui ne sont pas des dépenses communes : affichées à part
+HOUSEHOLD_NON_COMMON_CATEGORIES = ("Achats perso Bruno", "Épargne Bruno")
+# Au-delà de ce montant, une opération du foyer est proposée comme exceptionnelle
+# (hors budget courant), sauf si sa catégorie est par nature régulière.
+EXCEPTIONAL_THRESHOLD = 1000
+HOUSEHOLD_REGULAR_CATEGORIES = ("Salaire Bruno", "Participation Charlotte", "Prêt immobilier")
+# Cartes du compte commun, pour la répartition « par qui »
+JOINT_CARD_OWNERS = {JOINT_OWN_CARD: "Charlotte", "1295": "Bruno"}
 
 
 class TransactionSource(StrEnum):

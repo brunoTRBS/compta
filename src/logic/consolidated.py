@@ -72,6 +72,8 @@ def pair_transfers(tx_df: pl.DataFrame, accounts_df: pl.DataFrame) -> pl.DataFra
     paired = from_legs.join(to_legs, on="transfer_group_id", how="inner").with_columns(
         pl.col("from_amount").abs().alias("amount")
     ).drop("from_amount")
+    # Un virement rejeté s'annule sur le même compte : ce n'est pas un mouvement entre comptes
+    paired = paired.filter(pl.col("from_account_id") != pl.col("to_account_id"))
 
     if paired.is_empty():
         return paired

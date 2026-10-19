@@ -274,7 +274,7 @@ class TestRunFullPipelineWithTransfers:
     @patch("src.logic.import_pipeline.bulk_upsert_transactions")
     @patch("src.logic.import_pipeline.fetch_categorization_rules", return_value=[])
     def test_transfers_detected_and_reported(self, _rules, mock_upsert, mock_update):
-        base = {"business_id": "personal", "category": None, "is_household": False,
+        base = {"business_id": "personal", "category": None,
                 "is_transfer": False, "transfer_group_id": None, "needs_review": False}
         rows = [
             {**base, "external_id": "a", "date": "2026-10-01", "amount": -100.0,
@@ -294,3 +294,22 @@ class TestRunFullPipelineWithTransfers:
         inserted = {t["external_id"]: t for t in mock_upsert.call_args[0][0]}
         assert inserted["a"]["is_transfer"] is True
         assert inserted["b"]["needs_review"] is True
+
+
+@patch("src.logic.import_pipeline.bulk_upsert_transactions")
+@patch("src.logic.import_pipeline.fetch_categorization_rules", return_value=[
+    {"pattern": "DATALYO", "business_id": "household", "category": "Salaire Bruno",
+     "direction": "income", "priority": 150},
+])
+def test_pipeline_flags_household_exceptional_after_categorization(_rules, mock_upsert):
+    base = {"business_id": "household", "category": None,
+            "is_exceptional": False, "date": "2026-10-08", "account_id": "c"}
+    rows = [
+        {**base, "external_id": "a", "amount": 2614.12, "label": "DATALYO SALAIRE", "raw_label": "DATALYO SALAIRE"},
+        {**base, "external_id": "b", "amount": 1230.91, "label": "VIR CAUTION", "raw_label": "VIR CAUTION"},
+    ]
+    run_full_pipeline(rows, set(), "bank")
+    inserted = {t["external_id"]: t for t in mock_upsert.call_args[0][0]}
+    assert inserted["a"]["category"] == "Salaire Bruno"
+    assert inserted["a"]["is_exceptional"] is False
+    assert inserted["b"]["is_exceptional"] is True

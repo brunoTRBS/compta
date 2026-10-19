@@ -44,12 +44,14 @@ class TestSuggestPattern:
 
 def test_pending_excludes_categorized_transfers_and_household():
     df = pl.DataFrame({
-        "id": ["a", "b", "c", "d"],
-        "category": [None, "Repas", None, None],
-        "is_transfer": [False, False, True, False],
-        "is_household": [False, False, False, True],
+        "id": ["a", "b", "c", "d", "e"],
+        "category": [None, "Repas", None, None, None],
+        "is_transfer": [False, False, True, False, False],
+        "business_id": ["personal", "personal", "personal", "household", "household"],
+        "needs_review": [False, False, False, False, True],
     })
     assert pending_transactions(df)["id"].to_list() == ["a"]
+    assert pending_transactions(df, household=True)["id"].to_list() == ["d"]
 
 
 def test_category_suggestions_most_frequent():
@@ -74,4 +76,5 @@ def test_suggest_category_only_if_allowed():
 def test_build_rule():
     rule = build_rule("  EasyPark ", "Transport", "personal")
     assert rule == {"pattern": "EasyPark", "category": "Transport", "business_id": "personal",
-                    "priority": USER_RULE_PRIORITY, "is_active": True}
+                    "priority": USER_RULE_PRIORITY, "is_active": True,
+                    "direction": None}

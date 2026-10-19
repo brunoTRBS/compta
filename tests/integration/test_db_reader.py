@@ -13,7 +13,7 @@ import pytest
 def _chain_mock(data: list[dict]) -> MagicMock:
     """Mock client Supabase avec chaînage fluent et données de retour configurables."""
     client = MagicMock()
-    for method in ("table", "select", "eq", "neq", "gte", "lte", "gt", "lt", "in_", "order", "limit"):
+    for method in ("table", "select", "eq", "neq", "gte", "lte", "gt", "lt", "in_", "order", "limit", "range"):
         getattr(client, method).return_value = client
     client.execute.return_value = MagicMock(data=data)
     return client
@@ -40,10 +40,10 @@ _TX_ROW = {
     "account_id": "acc-1",
     "is_transfer": False,
     "transfer_group_id": None,
-    "is_household": False,
     "needs_review": False,
     "raw_label": None,
     "bank_category": None,
+    "is_exceptional": False,
 }
 
 
@@ -60,19 +60,31 @@ class TestReadTransactions:
             assert isinstance(result, pl.DataFrame)
             assert result.shape[0] == 1
 
-    def test_excludes_household_by_default(self):
+    def test_no_business_filter_reads_every_activity(self):
         client = _chain_mock([_TX_ROW])
         with patch("src.services.db_reader.get_supabase", return_value=client):
             from src.services import db_reader
             db_reader.read_transactions()
-            client.eq.assert_any_call("is_household", False)
+            assert "business_id" not in [c.args[0] for c in client.eq.call_args_list]
 
-    def test_include_household_skips_filter(self):
+    def test_household_is_selected_like_any_activity(self):
         client = _chain_mock([_TX_ROW])
         with patch("src.services.db_reader.get_supabase", return_value=client):
             from src.services import db_reader
-            db_reader.read_transactions(include_household=True)
-            assert ("is_household", False) not in [c.args for c in client.eq.call_args_list]
+            db_reader.read_transactions(business_id="household")
+            client.eq.assert_any_call("business_id", "household")
+
+    def test_reads_every_page_beyond_the_1000_rows_server_cap(self):
+        """Supabase plafonne une réponse à 1 000 lignes : la lecture doit continuer."""
+        client = _chain_mock([])
+        pages = [[{**_TX_ROW, "id": f"a{i}"} for i in range(1000)],
+                 [{**_TX_ROW, "id": f"b{i}"} for i in range(237)]]
+        client.execute.side_effect = [MagicMock(data=p) for p in pages]
+        with patch("src.services.db_reader.get_supabase", return_value=client):
+            from src.services import db_reader
+            result = db_reader.read_transactions()
+        assert result.shape[0] == 1237
+        assert [c.args for c in client.range.call_args_list] == [(0, 999), (1000, 1999)]
 
     def test_empty_returns_typed_schema(self):
         client = _chain_mock([])

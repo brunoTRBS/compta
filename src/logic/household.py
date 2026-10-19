@@ -2,7 +2,7 @@
 
 Le compte commun est alimenté chaque mois par la participation de l'utilisatrice,
 qui couvre toutes les dépenses communes. Ses opérations sont donc importées en
-is_household (hors budget perso), à deux exceptions près, soumises à vérification :
+l'activité « household » (hors budget perso), à deux exceptions près, soumises à vérification :
 
 - ses paiements avec sa propre carte : par défaut une dépense du foyer, mais
   certains sont des achats perso à compter dans son budget ;
@@ -11,20 +11,38 @@ is_household (hors budget perso), à deux exceptions près, soumises à vérific
 """
 
 import re
+import uuid
 from typing import Any
 
 from src.config import (
+    EXCEPTIONAL_THRESHOLD,
+    HOUSEHOLD_REGULAR_CATEGORIES,
+    JOINT_ACCOUNT_NAME,
     JOINT_OWN_CARD,
     JOINT_OWN_NAME_PATTERNS,
     PARTICIPATION_CATEGORY,
     PARTICIPATION_LABEL,
     BusinessId,
 )
+from src.logic.transfers import find_rejected_pairs
 
 KIND_CARD = "card"
 KIND_PARTICIPATION = "participation"
 
 _PARTICIPATION_SUFFIX = "_part"
+
+
+def is_household(tx: dict[str, Any]) -> bool:
+    """L'opération appartient au budget du foyer (compte commun)."""
+    return tx.get("business_id") == str(BusinessId.HOUSEHOLD)
+
+
+def default_business_id(account: dict[str, Any]) -> str:
+    """Activité proposée par défaut aux opérations importées d'un compte :
+    le foyer pour le compte commun, sinon l'activité propriétaire du compte."""
+    if account.get("name") == JOINT_ACCOUNT_NAME:
+        return str(BusinessId.HOUSEHOLD)
+    return account["owner"]
 
 
 def _bank_label(tx: dict[str, Any]) -> str:
@@ -50,11 +68,30 @@ def review_kind(tx: dict[str, Any]) -> str | None:
 
 
 def classify_joint_transactions(transactions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Marque les opérations du compte commun : toutes du foyer, certaines à vérifier."""
-    return [
-        {**tx, "is_household": True, "needs_review": review_kind(tx) is not None}
+    """Marque les opérations du compte commun : toutes du foyer, certaines à vérifier.
+
+    Un virement rejeté et son rejet s'annulent : ils deviennent un virement interne
+    (is_transfer), hors budget du foyer.
+    """
+    rows = [
+        {**tx, "business_id": str(BusinessId.HOUSEHOLD), "needs_review": review_kind(tx) is not None}
         for tx in transactions
     ]
+    for pair in find_rejected_pairs(rows, include_household=True):
+        group_id = str(uuid.uuid4())
+        for row in pair:
+            row.update({"is_transfer": True, "transfer_group_id": group_id, "needs_review": False})
+    return rows
+
+
+def propose_exceptional(tx: dict[str, Any]) -> bool:
+    """Opération du foyer à sortir du budget courant : gros montant (apport, caution,
+    clôture de compte…), sauf catégories régulières par nature (salaire, prêt…)."""
+    return (
+        is_household(tx)
+        and abs(float(tx["amount"])) >= EXCEPTIONAL_THRESHOLD
+        and tx.get("category") not in HOUSEHOLD_REGULAR_CATEGORIES
+    )
 
 
 def default_counts_in_budget(tx: dict[str, Any]) -> bool:
@@ -78,10 +115,10 @@ def participation_expense(tx: dict[str, Any]) -> dict[str, Any]:
         # Dérivé de la ligne bancaire : la valider deux fois ne crée pas 2 dépenses
         "external_id": f"{tx['external_id']}{_PARTICIPATION_SUFFIX}" if tx.get("external_id") else None,
         "notes": None,
-        "is_household": False,
         "needs_review": False,
         "is_transfer": False,
         "transfer_group_id": None,
+        "is_exceptional": False,
     }
 
 
@@ -96,7 +133,7 @@ def resolve_review(
         counts_in_budget: {id: True si l'opération compte dans son budget perso}.
 
     Returns:
-        (mises_à_jour, participations) — mises_à_jour = [{id, is_household, needs_review}],
+        (mises_à_jour, participations) — mises_à_jour = [{id, business_id, needs_review}],
         participations = dépenses perso à créer pour les virements retenus.
     """
     updates: list[dict[str, Any]] = []
@@ -106,8 +143,8 @@ def resolve_review(
         kind = review_kind(tx)
         # Un achat perso sort du foyer ; un virement reste une rentrée du foyer,
         # c'est sa contrepartie (la participation) qui entre dans le budget perso.
-        is_household = not (keep and kind == KIND_CARD)
-        updates.append({"id": tx["id"], "is_household": is_household, "needs_review": False})
+        business_id = BusinessId.PERSONAL if (keep and kind == KIND_CARD) else BusinessId.HOUSEHOLD
+        updates.append({"id": tx["id"], "business_id": str(business_id), "needs_review": False})
         if keep and kind == KIND_PARTICIPATION:
             participations.append(participation_expense(tx))
     return updates, participations

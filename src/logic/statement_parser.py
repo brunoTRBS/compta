@@ -236,10 +236,10 @@ def map_statement_transaction(
         "external_id": raw.get("external_id")
         or build_external_id(raw["date"], raw["amount"], raw["label"]),
         "notes": None,
-        "is_household": False,
         "needs_review": False,
         # Tous les champs sont présents sur chaque ligne : en insertion par lot,
         # un champ absent serait envoyé à NULL (refusé pour is_transfer).
         "is_transfer": False,
         "transfer_group_id": None,
+        "is_exceptional": False,
     }

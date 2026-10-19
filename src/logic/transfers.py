@@ -21,7 +21,7 @@ import uuid
 from datetime import date as Date
 from typing import Any
 
-from src.config import JOINT_OWN_NAME_PATTERNS
+from src.config import JOINT_OWN_NAME_PATTERNS, BusinessId
 
 # La banque peut passer les deux côtés d'un virement à 1-3 jours d'écart
 TRANSFER_MATCH_WINDOW_DAYS = 3
@@ -43,8 +43,12 @@ def _as_date(value: Any) -> Date:
     return value if isinstance(value, Date) else Date.fromisoformat(str(value)[:10])
 
 
+def _is_household(tx: dict[str, Any]) -> bool:
+    return tx.get("business_id") == str(BusinessId.HOUSEHOLD)
+
+
 def _eligible(tx: dict[str, Any]) -> bool:
-    return not tx.get("is_household") and not tx.get("is_transfer")
+    return not _is_household(tx) and not tx.get("is_transfer")
 
 
 def is_transfer_like(tx: dict[str, Any]) -> bool:
@@ -60,18 +64,28 @@ def _date_gap(a: dict[str, Any], b: dict[str, Any], window_days: int) -> int | N
     return gap if gap <= window_days else None
 
 
-def find_rejected_pairs(rows: list[dict[str, Any]]) -> list[tuple[dict, dict]]:
-    """Paires (virement, rejet) : même compte, montants opposés, « REJ » + même libellé."""
+def find_rejected_pairs(
+    rows: list[dict[str, Any]],
+    include_household: bool = False,
+) -> list[tuple[dict, dict]]:
+    """Paires (virement, rejet) : même compte, montants opposés, « REJ » + même libellé.
+
+    include_household=True : cherche aussi parmi les opérations du foyer (compte commun),
+    où un virement rejeté fausserait les rentrées du budget du foyer.
+    """
+    def _ok(r: dict[str, Any]) -> bool:
+        return not r.get("is_transfer") and (include_household or not _is_household(r))
+
     pairs: list[tuple[dict, dict]] = []
     used: set[int] = set()
-    rejections = [r for r in rows if _eligible(r) and _bank_label(r).startswith("REJ ")]
+    rejections = [r for r in rows if _ok(r) and _bank_label(r).startswith("REJ ")]
     for rej in rejections:
         original_label = _bank_label(rej)[4:].strip()
         for cand in rows:
             if (
                 id(cand) not in used
                 and cand is not rej
-                and _eligible(cand)
+                and _ok(cand)
                 and cand.get("account_id") == rej.get("account_id")
                 and round(float(cand["amount"]), 2) == -round(float(rej["amount"]), 2)
                 and _bank_label(cand) == original_label
@@ -208,7 +222,6 @@ def resolve_transfer_review(
             "category": None,
             "is_transfer": True,
             "transfer_group_id": group_id,
-            "is_household": False,
             "needs_review": False,
             "notes": _TRANSFER_NOTE,
         })

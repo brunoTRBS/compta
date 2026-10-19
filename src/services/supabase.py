@@ -416,3 +416,83 @@ def insert_category(business_id: str, name: str, direction: str) -> dict[str, An
 def delete_category(category_id: str) -> None:
     """Supprime une catégorie par son id."""
     get_supabase().table("categories").delete().eq("id", category_id).execute()
+
+
+def insert_categories(rows: list[dict[str, Any]]) -> None:
+    """Crée un lot de catégories ({business_id, name, direction, group_name})."""
+    if rows:
+        get_supabase().table("categories").insert(rows).execute()
+
+
+def delete_categories(category_ids: list[str]) -> None:
+    """Supprime un lot de catégories par id."""
+    if category_ids:
+        get_supabase().table("categories").delete().in_("id", category_ids).execute()
+
+
+def set_category_group(name: str, group_name: str | None, direction: str | None = None) -> None:
+    """Range une catégorie (toutes activités confondues) dans un groupe.
+
+    `direction` limite le changement aux dépenses ou aux revenus : un même nom
+    (« Médical ») peut exister dans les deux sens, avec des groupes différents.
+    """
+    query = get_supabase().table("categories").update({"group_name": group_name}).eq("name", name)
+    if direction is not None:
+        query = query.eq("direction", direction)
+    query.execute()
+
+
+def count_category_usage(name: str, scopes: list[str]) -> int:
+    """Nombre d'opérations classées dans cette catégorie, pour les activités données."""
+    result = (
+        get_supabase()
+        .table("transactions")
+        .select("id", count="exact")
+        .eq("category", name)
+        .in_("business_id", scopes)
+        .limit(1)
+        .execute()
+    )
+    return int(result.count or 0)
+
+
+def rename_or_merge_category(old: str, new: str, scopes: list[str]) -> int:
+    """Renomme une catégorie pour les activités données ; fusionne si `new` existe déjà.
+
+    Met à jour d'un coup les opérations, les règles de catégorisation, les récurrences
+    et la liste des catégories. Retourne le nombre d'opérations modifiées.
+    """
+    from src.logic.categories import plan_category_rows
+
+    client = get_supabase()
+    moved = (
+        client.table("transactions").update({"category": new})
+        .eq("category", old).in_("business_id", scopes).execute().data
+    )
+    client.table("recurring_transactions").update({"category": new}) \
+        .eq("category", old).in_("business_id", scopes).execute()
+    client.table("categorization_rules").update({"category": new}) \
+        .eq("category", old).in_("business_id", scopes).execute()
+
+    old_rows = (
+        client.table("categories").select("id,business_id,direction")
+        .eq("name", old).in_("business_id", scopes).execute().data
+    )
+    new_rows = (
+        client.table("categories").select("business_id,direction")
+        .eq("name", new).in_("business_id", scopes).execute().data
+    )
+    to_rename, to_delete = plan_category_rows(
+        old_rows, {(r["business_id"], r["direction"]) for r in new_rows}
+    )
+    for category_id in to_rename:
+        client.table("categories").update({"name": new}).eq("id", category_id).execute()
+    delete_categories(to_delete)
+    return len(moved)
+
+
+def fetch_all_transactions() -> list[dict[str, Any]]:
+    """Toutes les transactions, par pages (sauvegarde complète en CSV)."""
+    from src.services.db_reader import _fetch_pages
+
+    return _fetch_pages(get_supabase().table("transactions").select("*").order("date", desc=True))

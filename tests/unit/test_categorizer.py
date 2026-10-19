@@ -122,3 +122,42 @@ def test_rule_matches_raw_label_when_label_is_cleaned():
     }, schema_overrides={"category": pl.Utf8})
     rules = [{"pattern": "VILLA MARLIOZ 4", "business_id": None, "category": "Sorties"}]
     assert apply_rules(df, rules)["category"].to_list() == ["Sorties"]
+
+
+def _household_df(label, amount, business_id="household"):
+    import polars as pl
+
+    return pl.DataFrame({
+        "label": [label], "raw_label": [label], "business_id": [business_id],
+        "category": [None], "date": ["2026-10-08"], "amount": [amount],
+    }, schema_overrides={"category": pl.Utf8})
+
+
+def test_household_rule_only_applies_to_household():
+    from src.logic.categorizer import apply_rules
+
+    rules = [{"pattern": "LECLERC", "business_id": "household", "category": "Courses",
+              "direction": "expense"}]
+    assert apply_rules(_household_df("E LECLERC", -27.97), rules)["category"][0] == "Courses"
+    assert apply_rules(_household_df("E LECLERC", -27.97, business_id="personal"), rules)["category"][0] is None
+
+
+def test_personal_rule_never_applies_to_household():
+    from src.logic.categorizer import apply_rules
+
+    rules = [{"pattern": "LECLERC", "business_id": "personal", "category": "Repas"}]
+    assert apply_rules(_household_df("E LECLERC", -27.97), rules)["category"][0] is None
+
+
+def test_rule_direction():
+    """Un virement de Bruno reçu = rentrée ; envoyé (vers son épargne) = Épargne Bruno."""
+    from src.logic.categorizer import apply_rules
+
+    rules = [
+        {"pattern": "TARBES BRUNO", "business_id": "household", "category": "Virements Bruno",
+         "direction": "income"},
+        {"pattern": "TARBES BRUNO", "business_id": "household", "category": "Épargne Bruno",
+         "direction": "expense"},
+    ]
+    assert apply_rules(_household_df("VIR INST TARBES BRUNO", 500.0), rules)["category"][0] == "Virements Bruno"
+    assert apply_rules(_household_df("VIR INST TARBES BRUNO", -800.0), rules)["category"][0] == "Épargne Bruno"

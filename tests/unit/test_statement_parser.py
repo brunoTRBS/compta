@@ -265,5 +265,5 @@ def test_map_statement_uses_suggested_label_and_keeps_raw():
 
 def test_map_statement_defaults_not_household():
     tx = map_statement_transaction({"date": "2026-10-12", "amount": -3.0, "label": "X"}, "personal")
-    assert tx["is_household"] is False
+    assert tx["business_id"] == "personal"
     assert tx["needs_review"] is False

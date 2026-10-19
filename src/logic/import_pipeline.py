@@ -7,6 +7,7 @@ from typing import Any
 import polars as pl
 
 from src.logic.categorizer import apply_rules
+from src.logic.household import propose_exceptional
 from src.logic.transfers import detect_transfers
 from src.services.supabase import (
     bulk_update_transaction_fields,
@@ -189,7 +190,7 @@ def run_full_pipeline(
             new_txs, existing_bank_transactions
         )
         report.transfers_to_review = sum(
-            1 for tx in new_txs if tx.get("needs_review") and not tx.get("is_household")
+            1 for tx in new_txs if tx.get("needs_review") and tx.get("business_id") != "household"
         )
         try:
             bulk_update_transaction_fields(existing_updates)
@@ -203,6 +204,12 @@ def run_full_pipeline(
     except Exception as exc:
         report.errors.append(f"Catégorisation impossible : {exc}")
         report.pending_manual = report.new
+
+    # Étape 2 bis — Opérations exceptionnelles du foyer (après catégorisation : un
+    # salaire ou une échéance de prêt n'est jamais exceptionnel)
+    for tx in new_txs:
+        if propose_exceptional(tx):
+            tx["is_exceptional"] = True
 
     # Étape 3 — Persistance
     try:

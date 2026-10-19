@@ -57,14 +57,17 @@ def suggest_pattern(tx: dict[str, Any]) -> str:
     return pattern if len(pattern) >= _MIN_PATTERN_LENGTH else (raw or label)
 
 
-def pending_transactions(df: pl.DataFrame) -> pl.DataFrame:
-    """Opérations à classer : sans catégorie, hors virements et hors foyer."""
+def pending_transactions(df: pl.DataFrame, household: bool = False) -> pl.DataFrame:
+    """Opérations à classer : sans catégorie, hors virements et hors opérations encore
+    à vérifier (page Sync). household=True : celles du foyer, sinon celles du budget
+    perso et des activités pro."""
     if df.is_empty():
         return df
     return df.filter(
         (pl.col("category").is_null() | (pl.col("category") == ""))
         & ~pl.col("is_transfer").fill_null(False)
-        & ~pl.col("is_household").fill_null(False)
+        & ~pl.col("needs_review").fill_null(False)
+        & ((pl.col("business_id") == "household") == household)
     )
 
 
@@ -100,7 +103,12 @@ def suggest_category(
     return category if category in allowed else None
 
 
-def build_rule(pattern: str, category: str, business_id: str) -> dict[str, Any]:
+def build_rule(
+    pattern: str,
+    category: str,
+    business_id: str,
+    direction: str | None = None,
+) -> dict[str, Any]:
     """Règle de catégorisation à enregistrer depuis la file."""
     return {
         "pattern": pattern.strip(),
@@ -108,4 +116,5 @@ def build_rule(pattern: str, category: str, business_id: str) -> dict[str, Any]:
         "business_id": business_id,
         "priority": USER_RULE_PRIORITY,
         "is_active": True,
+        "direction": direction,
     }

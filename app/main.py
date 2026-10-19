@@ -38,6 +38,7 @@ Utilisez le menu de navigation à gauche pour accéder aux modules :
 | 2 | **Phi Rising** | Transactions, récurrences, virements, CA/URSSAF/marge nette — Coaching & Formation |
 | 3 | **Booth in Lyon** | Transactions, récurrences, virements, CA/URSSAF/marge nette — Location Photobooth |
 | 4 | **Budget Perso** | Transactions, récurrences, virements, revenus/dépenses, taux d'épargne |
+| 4b | **Budget Foyer** | Compte commun : rentrées, dépenses communes, qui met quoi, opérations exceptionnelles |
 | 5 | **Patrimoine** | Bilan des comptes et évolution patrimoniale |
 | 6 | **Sync** | Import des relevés bancaires (CSV), vérifications du compte commun et des virements, synchro Stripe |
 | 7 | **Paramètres** | Statut des connexions, gestion du cache |

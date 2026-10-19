@@ -55,7 +55,7 @@ class TestReviewKind:
 
 def test_classify_marks_everything_household():
     result = classify_joint_transactions([OWN_CARD, OTHER_CARD, PARTICIPATION, SALARY])
-    assert all(r["is_household"] for r in result)
+    assert all(r["business_id"] == "household" for r in result)
     assert [r["needs_review"] for r in result] == [True, False, True, False]
 
 
@@ -69,24 +69,24 @@ def test_participation_expense():
     assert exp["amount"] == -950.0
     assert exp["category"] == PARTICIPATION_CATEGORY
     assert exp["business_id"] == "personal"
-    assert exp["is_household"] is False
+    assert exp["business_id"] == "personal"
     assert exp["external_id"] == "cm_abc_part"
 
 
 class TestResolveReview:
     def test_card_kept_leaves_household(self):
         updates, parts = resolve_review([OWN_CARD], {"t1": True})
-        assert updates == [{"id": "t1", "is_household": False, "needs_review": False}]
+        assert updates == [{"id": "t1", "business_id": "personal", "needs_review": False}]
         assert parts == []
 
     def test_card_not_kept_stays_household(self):
         updates, _ = resolve_review([OWN_CARD], {"t1": False})
-        assert updates[0]["is_household"] is True
+        assert updates[0]["business_id"] == "household"
         assert updates[0]["needs_review"] is False
 
     def test_participation_kept_creates_expense_but_stays_household(self):
         updates, parts = resolve_review([PARTICIPATION], {"t1": True})
-        assert updates[0]["is_household"] is True
+        assert updates[0]["business_id"] == "household"
         assert len(parts) == 1 and parts[0]["amount"] == -950.0
 
     def test_participation_not_kept_creates_nothing(self):
@@ -96,3 +96,19 @@ class TestResolveReview:
     def test_missing_choice_uses_default(self):
         _, parts = resolve_review([PARTICIPATION], {})
         assert len(parts) == 1
+
+
+def test_is_household():
+    from src.logic.household import is_household
+
+    assert is_household({"business_id": "household"})
+    assert not is_household({"business_id": "personal"})
+    assert not is_household({})
+
+
+def test_default_business_id_joint_account_is_household():
+    from src.logic.household import default_business_id
+
+    assert default_business_id({"name": "Compte commun", "owner": "personal"}) == "household"
+    assert default_business_id({"name": "Compte perso", "owner": "personal"}) == "personal"
+    assert default_business_id({"name": "Compte pro coaching", "owner": "phi_rising"}) == "phi_rising"

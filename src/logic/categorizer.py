@@ -32,8 +32,16 @@ def apply_rules(df: pl.DataFrame, rules: list[dict]) -> pl.DataFrame:
         label_lower = f"{row['label']} {row.get('raw_label') or ''}".lower()
         matched_category = None
 
+        is_household = row["business_id"] == "household"
+        direction = "income" if (row.get("amount") or 0) > 0 else "expense"
+
         for rule in rules:
             if rule.get("business_id") is not None and rule["business_id"] != row["business_id"]:
+                continue
+            # Une règle sans activité s'applique à tout sauf au foyer, qui a ses propres catégories
+            if rule.get("business_id") is None and is_household:
+                continue
+            if rule.get("direction") and rule["direction"] != direction:
                 continue
             if rule["pattern"].lower() in label_lower:
                 matched_category = rule["category"]

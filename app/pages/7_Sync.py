@@ -12,7 +12,9 @@ from src.config import JOINT_ACCOUNT_NAME, PARTICIPATION_LABEL, BusinessId
 from src.logic.household import (
     KIND_CARD,
     classify_joint_transactions,
+    default_business_id,
     default_counts_in_budget,
+    is_household,
     resolve_review,
     review_kind,
 )
@@ -70,7 +72,7 @@ _STRIPE_BUSINESS_MAP = {
 def _get_existing_ids() -> set[str]:
     """Récupère tous les external_id déjà en base (virements et foyer compris) pour la déduplication."""
     try:
-        df = read_transactions(include_transfers=True, include_household=True)
+        df = read_transactions(include_transfers=True)
         if df.is_empty() or "external_id" not in df.columns:
             return set()
         return set(df.filter(df["external_id"].is_not_null())["external_id"].to_list())
@@ -111,7 +113,7 @@ def _get_existing_bank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _treatment(row: dict[str, Any]) -> str:
     """Ce que l'import fera de la ligne, pour l'aperçu."""
-    if row.get("is_household"):
+    if is_household(row):
         return "🔎 À vérifier" if row.get("needs_review") else "🏠 Foyer (hors budget)"
     if is_transfer_like(row):
         return "🔁 Virement interne"
@@ -212,7 +214,10 @@ for uploaded_file in uploaded_files or []:
             if account is None:
                 continue
 
-            business_id = account["owner"]
+            # Activité d'affectation (le foyer pour le compte commun) et activité des
+            # saisies manuelles à rapprocher (celle du propriétaire du compte)
+            business_id = default_business_id(account)
+            manual_scope = account["owner"]
             mapped = [map_statement_transaction(r, business_id, account["id"]) for r in rows]
             is_joint = account["name"] == JOINT_ACCOUNT_NAME
             if is_joint:
@@ -222,7 +227,7 @@ for uploaded_file in uploaded_files or []:
                     "hors budget perso. Tes paiements carte et tes virements seront à vérifier "
                     "juste en dessous après l'import."
                 )
-            manual_candidates = _get_manual_candidates(business_id, rows)
+            manual_candidates = _get_manual_candidates(manual_scope, rows)
             new_rows, n_duplicates = deduplicate(mapped, existing_ids)
             new_rows, links = match_manual_entries(new_rows, manual_candidates)
 
@@ -303,14 +308,19 @@ st.caption(
 # Section Compte commun — opérations à vérifier
 # ---------------------------------------------------------------------------
 try:
-    all_review_df = read_transactions(include_household=True).filter(pl.col("needs_review"))
+    all_review_df = read_transactions().filter(pl.col("needs_review"))
 except Exception as exc:
     st.error(f"Impossible de charger les opérations à vérifier : {exc}")
     all_review_df = pl.DataFrame()
 
-review_df = all_review_df.filter(pl.col("is_household")) if not all_review_df.is_empty() else all_review_df
+_household_scope = str(BusinessId.HOUSEHOLD)
+review_df = (
+    all_review_df.filter(pl.col("business_id") == _household_scope)
+    if not all_review_df.is_empty() else all_review_df
+)
 transfer_review_df = (
-    all_review_df.filter(~pl.col("is_household")) if not all_review_df.is_empty() else all_review_df
+    all_review_df.filter(pl.col("business_id") != _household_scope)
+    if not all_review_df.is_empty() else all_review_df
 )
 
 if not review_df.is_empty():
@@ -376,7 +386,7 @@ if not review_df.is_empty():
 
             bulk_update_transaction_fields(updates)
             invalidate_cache()
-            n_perso = sum(1 for u in updates if not u["is_household"])
+            n_perso = sum(1 for u in updates if u["business_id"] == str(BusinessId.PERSONAL))
             message = (
                 f"{n_perso} achat(s) perso, {len(participations)} participation(s) "
                 f"(dont {n_already_entered} déjà saisie(s) à la main)."

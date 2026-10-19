@@ -49,7 +49,7 @@ def render_reconciliation_section(accounts: list[dict[str, Any]]) -> None:
             continue
 
         transactions = read_transactions(
-            date_from=snapshots["date"].min(), include_transfers=True, include_household=True,
+            date_from=snapshots["date"].min(), include_transfers=True,
         )
         if not transactions.is_empty():
             transactions = transactions.filter(pl.col("account_id") == account["id"])

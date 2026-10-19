@@ -225,3 +225,18 @@ class TestPersonalSavingsTransfers:
         empty = pl.DataFrame(schema={"id": pl.Utf8, "owner": pl.Utf8, "type": pl.Utf8})
         result = personal_savings_transfers(savings_transfer_scenarios, empty)
         assert result.is_empty()
+
+
+def test_pair_transfers_ignores_rejected_transfer_on_same_account():
+    """Virement + rejet sur le même compte : aucun mouvement entre comptes."""
+    import polars as pl
+
+    from src.logic.consolidated import pair_transfers
+
+    tx = pl.DataFrame({
+        "transfer_group_id": ["g1", "g1"], "is_transfer": [True, True],
+        "date": ["2026-09-23", "2026-09-23"], "label": ["VIR", "REJ VIR"],
+        "amount": [-698.0, 698.0], "account_id": ["commun", "commun"],
+    })
+    accounts = pl.DataFrame({"id": ["commun"], "name": ["Compte commun"]})
+    assert pair_transfers(tx, accounts).is_empty()

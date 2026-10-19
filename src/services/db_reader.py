@@ -19,9 +19,12 @@ _CACHE_TTL = 300
 
 _TXN_COLS = (
     "id,date,amount,label,source,business_id,category,is_income,external_id,created_at,"
-    "account_id,is_transfer,transfer_group_id,is_household,needs_review,raw_label,bank_category"
+    "account_id,is_transfer,transfer_group_id,needs_review,raw_label,bank_category,is_exceptional"
 )
 _TXN_LIMIT = 50_000
+# Supabase plafonne une réponse à 1 000 lignes (réglage « Max rows ») : au-delà, les
+# lignes manquantes disparaissent en silence. On lit donc par pages de cette taille.
+_PAGE_SIZE = 1000
 
 _TXN_SCHEMA: dict[str, type[pl.DataType]] = {
     "id": pl.Utf8,
@@ -37,10 +40,10 @@ _TXN_SCHEMA: dict[str, type[pl.DataType]] = {
     "account_id": pl.Utf8,
     "is_transfer": pl.Boolean,
     "transfer_group_id": pl.Utf8,
-    "is_household": pl.Boolean,
     "needs_review": pl.Boolean,
     "raw_label": pl.Utf8,
     "bank_category": pl.Utf8,
+    "is_exceptional": pl.Boolean,
 }
 
 
@@ -52,7 +55,6 @@ def read_transactions(
     date_from: Date | None = None,
     date_to: Date | None = None,
     include_transfers: bool = False,
-    include_household: bool = False,
 ) -> pl.DataFrame:
     """Lit les transactions via Supabase REST. Retourne un DataFrame Polars typé.
 
@@ -61,9 +63,7 @@ def read_transactions(
     déplacement d'argent entre deux comptes. Passer include_transfers=True
     pour les vues qui suivent l'argent compte par compte (ex : Vue consolidée).
 
-    Exclut aussi les opérations du foyer (is_household=true, compte commun) : elles
-    sont couvertes par la participation mensuelle et n'appartiennent pas au budget
-    perso. Passer include_household=True pour les voir.
+    Sans business_id, toutes les activités sont lues, foyer (compte commun) compris.
     """
     q = get_supabase().table("transactions").select(_TXN_COLS)
 
@@ -72,9 +72,6 @@ def read_transactions(
 
     if not include_transfers:
         q = q.eq("is_transfer", False)
-
-    if not include_household:
-        q = q.eq("is_household", False)
 
     if date_from is not None:
         q = q.gte("date", date_from.isoformat())
@@ -88,7 +85,7 @@ def read_transactions(
         elif year is not None:
             q = q.gte("date", f"{year}-01-01").lte("date", f"{year}-12-31")
 
-    data = q.order("date", desc=True).limit(_TXN_LIMIT).execute().data
+    data = _fetch_pages(q.order("date", desc=True))
     if not data:
         return pl.DataFrame(schema=_TXN_SCHEMA)
     return _cast_transactions(pl.DataFrame(data, infer_schema_length=None))
@@ -267,7 +264,7 @@ def read_patrimoine_evolution(
 @st.cache_data(ttl=_CACHE_TTL)
 def read_categories(business_id: str | None = None) -> pl.DataFrame:
     """Lit les catégories depuis Supabase (résultat mis en cache 5 min)."""
-    q = get_supabase().table("categories").select("id,business_id,name,direction")
+    q = get_supabase().table("categories").select("id,business_id,name,direction,group_name")
     if business_id is not None:
         q = q.eq("business_id", business_id)
     data = q.order("direction").order("name").execute().data
@@ -305,6 +302,19 @@ def read_recurring_transactions() -> pl.DataFrame:
     )
 
 
+def _fetch_pages(query, page_size: int = _PAGE_SIZE, max_rows: int = _TXN_LIMIT) -> list[dict]:
+    """Exécute une requête page par page jusqu'à épuisement des lignes."""
+    rows: list[dict] = []
+    start = 0
+    while len(rows) < max_rows:
+        batch = query.range(start, start + page_size - 1).execute().data
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        start += page_size
+    return rows
+
+
 def invalidate_cache() -> None:
     """Vide le cache Streamlit pour forcer un rechargement depuis la DB."""
     st.cache_data.clear()
@@ -321,9 +331,9 @@ def _cast_transactions(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("amount").cast(pl.Float64),
         pl.col("is_income").cast(pl.Boolean),
         pl.col("is_transfer").cast(pl.Boolean),
-        pl.col("is_household").cast(pl.Boolean),
         pl.col("needs_review").cast(pl.Boolean),
         pl.col("raw_label").cast(pl.Utf8),
         pl.col("bank_category").cast(pl.Utf8),
+        pl.col("is_exceptional").cast(pl.Boolean),
         pl.col("created_at").str.to_datetime(time_unit="us", time_zone="UTC"),
     )

@@ -10,6 +10,7 @@ from app.components.auth import require_auth
 from src.config import BusinessId
 from src.logic.budget import compute_budget_summary
 from src.logic.consolidated import flows_per_account, pair_transfers
+from src.logic.household_budget import regular_operations
 from src.logic.revenue import _MONTH_LABELS, aggregate_monthly_from_df
 from src.services.db_reader import read_accounts, read_transactions
 
@@ -22,6 +23,7 @@ _BUSINESS_LABELS: dict[str, str] = {
     "Perso": str(BusinessId.PERSONAL),
     "Phi Rising": str(BusinessId.PHI_RISING),
     "Booth in Lyon": str(BusinessId.BOOTH_IN_LYON),
+    "Foyer": str(BusinessId.HOUSEHOLD),
 }
 _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
 _MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
@@ -54,11 +56,16 @@ for label, biz_id in _BUSINESS_LABELS.items():
     except Exception as exc:
         st.error(f"Impossible de charger les transactions ({label}) : {exc}")
         df_month = pl.DataFrame()
+    if biz_id == str(BusinessId.HOUSEHOLD):
+        df_month = regular_operations(df_month)  # hors apport, caution…
     summaries[label] = compute_budget_summary(df_month, year, selected_month)
 
 cols = st.columns(len(_BUSINESS_LABELS) + 1)
-total_income = sum(s["income"] for s in summaries.values())
-total_expenses = sum(s["expenses"] for s in summaries.values())
+# Le foyer est exclu du total : il est alimenté par ta participation (déjà une dépense du
+# budget perso) et contient les revenus de Bruno.
+_counted = {k: v for k, v in summaries.items() if k != "Foyer"}
+total_income = sum(s["income"] for s in _counted.values())
+total_expenses = sum(s["expenses"] for s in _counted.values())
 
 for col, (label, summary) in zip(cols, summaries.items()):
     with col:
@@ -72,6 +79,7 @@ with cols[-1]:
     st.metric("Revenus", f"{total_income:,.2f} €")
     st.metric("Dépenses", f"{total_expenses:,.2f} €")
     st.metric("Solde", f"{total_income - total_expenses:,.2f} €")
+    st.caption("Perso + Phi Rising + Booth in Lyon (le Foyer n'est pas additionné).")
 
 st.divider()
 
@@ -88,6 +96,10 @@ for label, biz_id in _BUSINESS_LABELS.items():
         continue
     if df_year.is_empty():
         continue
+    if biz_id == str(BusinessId.HOUSEHOLD):
+        df_year = regular_operations(df_year)
+        if df_year.is_empty():
+            continue
     monthly = aggregate_monthly_from_df(df_year).with_columns(pl.lit(label).alias("activité"))
     monthly_frames.append(monthly)
 

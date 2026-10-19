@@ -19,7 +19,7 @@ ACCOUNTS = [
 
 def _row(label, amount, account=PERSO, day=1, **extra):
     return {"date": f"2026-10-{day:02d}", "amount": amount, "label": label,
-            "raw_label": label, "account_id": account, "is_household": False,
+            "raw_label": label, "account_id": account, "business_id": "personal",
             "is_transfer": False, "needs_review": False, **extra}
 
 
@@ -37,7 +37,7 @@ class TestIsTransferLike:
         assert not is_transfer_like(_row("VIR INST M OU MME TABERNERO RESTIT CAUTION", 1230.91))
 
     def test_household_row_is_never(self):
-        assert not is_transfer_like(_row("VIR INST MME CHARLOTTE PARIS LOYER", 950.0, is_household=True))
+        assert not is_transfer_like(_row("VIR INST MME CHARLOTTE PARIS LOYER", 950.0, business_id="household"))
 
 
 def test_rejected_transfer_pair():
