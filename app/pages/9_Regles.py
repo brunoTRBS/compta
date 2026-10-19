@@ -4,6 +4,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title, section_title
 from src.logic.inbox import USER_RULE_PRIORITY, build_rule, inbox_rows, rule_updates
 from src.logic.rules import (
     BUDGET_LABELS,
@@ -25,7 +26,7 @@ from src.services.supabase import (
 
 st.set_page_config(page_title="Règles", page_icon="🧭", layout="wide")
 require_auth()
-st.title("Règles")
+page_title("Règles", "regles")
 st.caption(
     "Une règle range automatiquement les opérations importées dont le libellé contient son "
     "**motif** : elle donne une catégorie et, si tu le précises, un autre budget. Quand plusieurs "
@@ -122,7 +123,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Tester un libellé
 # ---------------------------------------------------------------------------
-st.subheader("Tester un libellé")
+section_title("Tester un libellé", "regles_test")
 st.caption("Colle un libellé de ton relevé pour voir quelle règle le rangerait, et comment.")
 col_label, col_budget, col_amount = st.columns([3, 1, 1])
 test_text = col_label.text_input("Libellé", placeholder="PAIEMENT CB 0810 LYON DELIVEROO CARTE 3935", key="rules_test_label")
@@ -181,7 +182,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Appliquer aux opérations non classées
 # ---------------------------------------------------------------------------
-st.subheader("Appliquer aux opérations déjà importées")
+section_title("Appliquer aux opérations déjà importées", "regles_apply")
 st.caption(
     "Les règles s'appliquent automatiquement aux nouveaux imports. Ce bouton les applique aux "
     "opérations **sans catégorie** déjà en base, après un aperçu."

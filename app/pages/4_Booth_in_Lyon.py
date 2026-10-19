@@ -1,11 +1,12 @@
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title
 from app.components.business_dashboard import render_dashboard
 from src.config import BusinessId
 
 st.set_page_config(page_title="Booth in Lyon", page_icon="📸", layout="wide")
 require_auth()
-st.title("Booth in Lyon — Location Photobooth")
+page_title("Booth in Lyon — Location Photobooth", "pro_page")
 
 render_dashboard(BusinessId.BOOTH_IN_LYON, "Booth in Lyon")

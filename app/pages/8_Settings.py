@@ -6,6 +6,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title, section_title, tab_help
 from src.logic.categories import (
     DEFAULT_GROUPS,
     GROUPS,
@@ -31,12 +32,12 @@ from src.utils.health import HealthStatus, run_all_checks
 
 st.set_page_config(page_title="Paramètres", page_icon="⚙️", layout="wide")
 require_auth()
-st.title("Paramètres & Statut")
+page_title("Paramètres & Statut", "settings")
 
 # ---------------------------------------------------------------------------
 # Catégories partagées
 # ---------------------------------------------------------------------------
-st.subheader("Catégories")
+section_title("Catégories", "settings_categories")
 st.caption(
     "Une liste commune à Perso, Foyer et activités pro, pour pouvoir comparer. "
     "Chaque catégorie est rangée dans un groupe (Logement, Alimentation…) : les graphiques "
@@ -60,6 +61,7 @@ tab_list, tab_cleanup, tab_rename = st.tabs(
 
 # --- Liste : une ligne par catégorie, une case par budget ---------------------
 with tab_list:
+    tab_help("settings_liste")
     st.caption(
         "Coche les budgets où la catégorie est proposée. Décocher ne touche pas aux "
         "opérations déjà classées. Pour changer un nom, utilise l'onglet « Renommer / fusionner »."
@@ -139,6 +141,7 @@ with tab_list:
 
 # --- Remise en ordre : renommages proposés pour l'historique -----------------
 with tab_cleanup:
+    tab_help("settings_cleanup")
     st.caption(
         "Renommages proposés pour aligner ton historique Perso et Foyer sur la liste commune. "
         "Chacun met à jour d'un coup toutes les opérations, règles et récurrences concernées."
@@ -180,6 +183,7 @@ with tab_cleanup:
 
 # --- Renommer / fusionner -----------------------------------------------------
 with tab_rename:
+    tab_help("settings_rename")
     st.caption(
         "Renomme une catégorie pour tout l'historique. Si le nouveau nom existe déjà, les deux "
         "catégories sont **fusionnées**. Les catégories dont dépendent des calculs "
@@ -219,7 +223,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Sauvegarde
 # ---------------------------------------------------------------------------
-st.subheader("Sauvegarde")
+section_title("Sauvegarde", "settings_sauvegarde")
 st.caption(
     "Télécharge une copie de toutes tes opérations (CSV). À faire avant un gros changement, "
     "par exemple une remise en ordre des catégories. Range le fichier quelque part : tu n'as "
@@ -251,7 +255,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Statut des connexions
 # ---------------------------------------------------------------------------
-st.subheader("Statut des connexions")
+section_title("Statut des connexions", "settings_statut")
 
 _STATUS_CACHE_KEY = "_settings_health"
 
@@ -286,7 +290,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Gestion du cache
 # ---------------------------------------------------------------------------
-st.subheader("Cache de données")
+section_title("Cache de données", "settings_cache")
 st.caption(
     "Les requêtes base de données sont mises en cache 5 minutes (TTL). "
     "Videz le cache si les données affichées semblent obsolètes."

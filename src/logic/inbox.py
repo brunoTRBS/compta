@@ -22,6 +22,7 @@ from typing import Any
 import polars as pl
 
 from src.config import HOUSEHOLD_PARTICIPATION_CATEGORY, BusinessId
+from src.logic.categories import resolve_category
 from src.logic.categorizer import apply_rules
 from src.logic.household import KIND_CARD, KIND_PARTICIPATION, participation_expense, review_kind
 from src.logic.transfers import resolve_transfer_review
@@ -219,20 +220,14 @@ def plan_inbox_changes(
 
         valid = categories.get(affectation, {}).get(direction, set())
         chosen = row.get("Catégorie") or None
-        if chosen and chosen not in valid:
+        current = tx.get("category") or None
+        final, rejected = resolve_category(current, chosen, valid)
+        if rejected:
             plan.errors.append(
                 f"« {name} » : la catégorie « {chosen} » n'existe pas pour {AFFECTATIONS[affectation]} "
                 "(catégorie non appliquée)."
             )
             chosen = None
-
-        current = tx.get("category") or None
-        if chosen:
-            final = chosen
-        elif current and current in valid:
-            final = current  # affectation inchangée, ou catégorie aussi valable dans le nouveau budget
-        else:
-            final = None
         if final != current:
             fields["category"] = final
 

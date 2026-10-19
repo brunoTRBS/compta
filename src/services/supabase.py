@@ -201,6 +201,12 @@ def insert_transfer(
     return result.data
 
 
+def delete_transactions(transaction_ids: list[str]) -> None:
+    """Supprime un lot de transactions par id."""
+    if transaction_ids:
+        get_supabase().table("transactions").delete().in_("id", transaction_ids).execute()
+
+
 def delete_transfer(transfer_group_id: str) -> None:
     """Supprime les 2 écritures d'un virement (les 2 lignes partageant ce transfer_group_id)."""
     get_supabase().table("transactions").delete().eq("transfer_group_id", transfer_group_id).execute()

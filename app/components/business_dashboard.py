@@ -8,6 +8,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.breakdown_section import render_spending_breakdown
+from app.components.help import tab_help
 from app.components.recurring_section import render_recurring_section
 from app.components.transaction_table import render_editable_transactions
 from app.components.transfer_section import render_transfer_section
@@ -38,9 +39,11 @@ def render_dashboard(business_id: BusinessId, business_name: str) -> None:
     )
 
     with tab_tx:
+        tab_help("pro_transactions")
         _render_transactions(business_id)
 
     with tab_recurring:
+        tab_help("recurrences")
         st.caption(
             "Définis un modèle une fois (loyer, abonnement...), "
             "puis valide-le chaque mois en un clic au lieu de tout retaper."
@@ -48,12 +51,15 @@ def render_dashboard(business_id: BusinessId, business_name: str) -> None:
         render_recurring_section(key_prefix=f"biz_{business_id}", business_id_filter=str(business_id))
 
     with tab_transfer:
+        tab_help("virement")
         render_transfer_section(key_prefix=f"biz_{business_id}")
 
     with tab_monthly:
+        tab_help("pro_mensuelle")
         _render_monthly_view(business_id)
 
     with tab_global:
+        tab_help("pro_globale")
         _render_global_view(business_id)
 
 

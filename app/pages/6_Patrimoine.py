@@ -7,6 +7,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title, section_title
 from src.logic.patrimoine import (
     aggregate_by_account_type,
     compute_net_worth,
@@ -28,7 +29,7 @@ from src.services.supabase import (
 
 st.set_page_config(page_title="Patrimoine", page_icon="🏦", layout="wide")
 require_auth()
-st.title("Bilan Patrimonial")
+page_title("Bilan Patrimonial", "patrimoine")
 
 _OWNER_LABELS = {
     "personal": "Perso",
@@ -149,7 +150,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Formulaire — mise à jour manuelle d'un solde
 # ---------------------------------------------------------------------------
-st.subheader("Mettre à jour un solde")
+section_title("Mettre à jour un solde", "patrimoine_solde")
 
 if not accounts_raw:
     st.info("Aucun compte disponible. Ajoutez des comptes dans Supabase d'abord.")

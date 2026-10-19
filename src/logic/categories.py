@@ -65,6 +65,29 @@ DEFAULT_GROUPS: dict[str, str] = {
 }
 
 
+def resolve_category(
+    current: str | None,
+    chosen: str | None,
+    valid: set[str],
+) -> tuple[str | None, bool]:
+    """Catégorie finale d'une opération après un choix, dans un budget donné.
+
+    Args:
+        current: catégorie actuelle ; chosen: catégorie choisie (None = pas de choix) ;
+            valid: catégories qui existent pour ce budget et ce sens.
+
+    Returns:
+        (catégorie finale, choix refusé ?) — un choix inconnu du budget est refusé ; sans choix,
+        la catégorie actuelle est gardée si elle reste valable, sinon effacée.
+    """
+    rejected = bool(chosen) and chosen not in valid
+    if chosen and not rejected:
+        return chosen, False
+    if current and current in valid:
+        return current, rejected
+    return None, rejected
+
+
 def validate_rename(old: str, new: str) -> str | None:
     """Message d'erreur si le renommage / la fusion est interdit, sinon None."""
     new = new.strip()

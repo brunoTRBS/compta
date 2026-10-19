@@ -8,6 +8,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title, section_title, tab_help
 from app.components.breakdown_section import render_spending_breakdown
 from app.components.recurring_section import render_recurring_section
 from app.components.transaction_table import render_editable_transactions
@@ -41,7 +42,7 @@ from src.services.supabase import bulk_update_categories, fetch_categorization_r
 
 st.set_page_config(page_title="Budget Perso", page_icon="💰", layout="wide")
 require_auth()
-st.title("Budget Personnel")
+page_title("Budget Personnel", "perso_page")
 
 _SAVINGS_CATEGORY = "Épargne"
 _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
@@ -64,6 +65,7 @@ tab_tx, tab_recurring, tab_transfer, tab_monthly, tab_global = st.tabs(
 # Onglet Transactions
 # ---------------------------------------------------------------------------
 with tab_tx:
+    tab_help("perso_transactions")
     today = date.today()
     current_year = today.year
 
@@ -140,6 +142,7 @@ with tab_tx:
 # Onglet Récurrences
 # ---------------------------------------------------------------------------
 with tab_recurring:
+    tab_help("recurrences")
     st.caption(
         "Définis un modèle une fois (loyer, abonnement, salaire...), "
         "puis valide-le chaque mois en un clic au lieu de tout retaper."
@@ -150,12 +153,14 @@ with tab_recurring:
 # Onglet Virement
 # ---------------------------------------------------------------------------
 with tab_transfer:
+    tab_help("virement")
     render_transfer_section(key_prefix="budget_perso")
 
 # ---------------------------------------------------------------------------
 # Onglet Vue mensuelle
 # ---------------------------------------------------------------------------
 with tab_monthly:
+    tab_help("perso_mensuelle")
     with st.sidebar:
         st.subheader("Filtres — Vue mensuelle")
         current_year_m = date.today().year
@@ -287,7 +292,7 @@ with tab_monthly:
 
     st.divider()
 
-    st.subheader("Où part l'argent")
+    section_title("Où part l'argent", "repartition")
     include_foyer = st.toggle(
         "Ajouter les dépenses communes du foyer (vue d'ensemble)",
         key="perso_overview",
@@ -322,6 +327,7 @@ with tab_monthly:
 # Onglet Vue globale
 # ---------------------------------------------------------------------------
 with tab_global:
+    tab_help("perso_globale")
     current_year_g = date.today().year
 
     period_type: str = st.radio(

@@ -7,6 +7,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title
 from app.components.reconciliation_section import render_reconciliation_section
 from src.config import JOINT_ACCOUNT_NAME, BusinessId
 from src.logic.household import propose_exceptional
@@ -44,7 +45,7 @@ from src.services.supabase import (
 
 st.set_page_config(page_title="À traiter", page_icon="📥", layout="wide")
 require_auth()
-st.title("À traiter")
+page_title("À traiter", "a_traiter")
 
 _MESSAGES_KEY = "_inbox_messages"
 _VERSION_KEY = "_inbox_version"

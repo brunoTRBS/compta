@@ -8,6 +8,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title, section_title
 from src.config import JOINT_ACCOUNT_NAME, BusinessId
 from src.logic.household import (
     classify_joint_transactions,
@@ -42,7 +43,7 @@ from src.services.supabase import (
 
 st.set_page_config(page_title="Synchronisation", page_icon="🔄", layout="wide")
 require_auth()
-st.title("Synchronisation des données")
+page_title("Synchronisation des données", "sync")
 st.caption("Importe les relevés bancaires (CSV BoursoBank, Crédit Mutuel) et les paiements (Stripe).")
 
 _BANK_LABELS = {BANK_BOURSOBANK: "BoursoBank"}
@@ -121,7 +122,7 @@ def _account_label(account: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Section Banque — import des relevés CSV
 # ---------------------------------------------------------------------------
-st.subheader("🏦 Banque — Relevés CSV")
+section_title("🏦 Banque — Relevés CSV", "sync_banque")
 st.caption(
     "Dépose un ou plusieurs relevés : le compte est reconnu automatiquement. "
     "Les opérations déjà importées ou déjà saisies à la main ne sont pas recréées."
@@ -296,7 +297,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Section Stripe
 # ---------------------------------------------------------------------------
-st.subheader("💳 Stripe — Paiements")
+section_title("💳 Stripe — Paiements", "sync_stripe")
 
 with st.expander("Configuration Stripe", expanded=True):
     stripe_left, stripe_right = st.columns([3, 1])

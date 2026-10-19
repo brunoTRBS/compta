@@ -5,6 +5,7 @@ from typing import Any
 import polars as pl
 import streamlit as st
 
+from app.components.help import section_title
 from src.logic.reconciliation import account_status, check_account
 from src.services.db_reader import read_statement_balances, read_transactions
 
@@ -16,7 +17,7 @@ def render_reconciliation_section(accounts: list[dict[str, Any]]) -> None:
         accounts: comptes (fetch_accounts) — seuls ceux reconnus par un n° de relevé
             (bank_account_number) sont contrôlés.
     """
-    st.subheader("✅ Contrôle des comptes")
+    section_title("✅ Contrôle des comptes", "controle_comptes")
     st.caption(
         "À chaque import, l'app note le solde réel du compte. Entre deux relevés, ses "
         "opérations doivent expliquer exactement la variation du solde — sinon il manque "

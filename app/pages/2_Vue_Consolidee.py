@@ -7,6 +7,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title
 from src.config import BusinessId
 from src.logic.budget import compute_budget_summary
 from src.logic.consolidated import flows_per_account, pair_transfers
@@ -16,7 +17,7 @@ from src.services.db_reader import read_accounts, read_transactions
 
 st.set_page_config(page_title="Vue consolidée", page_icon="🧮", layout="wide")
 require_auth()
-st.title("Vue consolidée")
+page_title("Vue consolidée", "vue_consolidee")
 st.caption("Perso, Phi Rising et Booth in Lyon sur une même vue — flux du mois et détail par compte réel.")
 
 _BUSINESS_LABELS: dict[str, str] = {

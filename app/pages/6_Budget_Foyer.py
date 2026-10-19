@@ -8,6 +8,7 @@ import polars as pl
 import streamlit as st
 
 from app.components.auth import require_auth
+from app.components.help import page_title, section_title
 from app.components.breakdown_section import render_spending_breakdown
 from src.config import HOUSEHOLD_NON_COMMON_CATEGORIES, JOINT_ACCOUNT_NAME, BusinessId
 from src.logic.household_budget import (
@@ -30,7 +31,7 @@ from src.services.supabase import bulk_update_transaction_fields, fetch_accounts
 
 st.set_page_config(page_title="Budget Foyer", page_icon="🏠", layout="wide")
 require_auth()
-st.title("Budget du foyer")
+page_title("Budget du foyer", "foyer")
 st.caption(
     "Le compte commun : ce que Charlotte et Bruno y mettent, ce qui en sort. "
     "Les achats perso de Charlotte (carte cochée « perso ») n'y figurent pas — ils sont "
@@ -127,7 +128,7 @@ with col_out:
             column_config={"Montant": st.column_config.NumberColumn(format="%.2f €")},
         )
 
-st.markdown("**Où part l'argent du foyer**")
+section_title("Où part l'argent du foyer", "repartition", "markdown")
 prev_end = month_start - timedelta(days=1)
 prev_month_df = regular.filter(pl.col("date").is_between(prev_end.replace(day=1), prev_end))
 render_spending_breakdown(
@@ -181,7 +182,7 @@ st.divider()
 month_all_df = household_df.filter(pl.col("date").is_between(month_start, month_end)).sort(
     "date", descending=True
 )
-st.subheader(f"Opérations de {_MONTH_LABELS[month]} {year} ({month_all_df.height})")
+section_title(f"Opérations de {_MONTH_LABELS[month]} {year} ({month_all_df.height})", "foyer_operations")
 st.caption(
     "Corrige un libellé ou une catégorie, ou coche **Exceptionnel** pour sortir une opération du "
     "budget courant sans la supprimer (le solde du compte reste juste). Utile pour une erreur "
@@ -236,7 +237,7 @@ st.divider()
 # Opérations exceptionnelles
 # ---------------------------------------------------------------------------
 exceptional = exceptional_operations(household_df).sort("date", descending=True)
-st.subheader(f"Opérations exceptionnelles ({exceptional.height})")
+section_title(f"Opérations exceptionnelles ({exceptional.height})", "foyer_exceptionnelles")
 st.caption(
     "Hors budget courant (apport, caution, clôture de compte…). Décoche pour remettre une "
     "opération dans le budget."
