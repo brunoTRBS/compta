@@ -112,3 +112,32 @@ def test_retro_classify():
     assert updates["t0"] == {"id": "t0", "category": "Salaire Bruno"}
     assert updates["t1"] == {"id": "t1", "category": "Virements Bruno", "is_exceptional": True}
     assert "t2" not in updates
+
+
+class TestOperationChanges:
+    ORIGINAL = {"label": "VIR SEPA CHARLOTTE PARIS CH3W26274M118430", "category": None,
+                "is_exceptional": False}
+
+    def test_bank_error_becomes_exceptional_divers_with_clear_label(self):
+        from src.logic.household_budget import operation_changes
+
+        edited = {"Libellé": "Erreur bancaire - fonds pro renvoyés", "Catégorie": "Divers",
+                  "Exceptionnel": True}
+        assert operation_changes(self.ORIGINAL, edited) == {
+            "label": "Erreur bancaire - fonds pro renvoyés",
+            "category": "Divers",
+            "is_exceptional": True,
+        }
+
+    def test_nothing_changed(self):
+        from src.logic.household_budget import operation_changes
+
+        edited = {"Libellé": self.ORIGINAL["label"], "Catégorie": "", "Exceptionnel": False}
+        assert operation_changes(self.ORIGINAL, edited) == {}
+
+    def test_clearing_a_category(self):
+        from src.logic.household_budget import operation_changes
+
+        original = {**self.ORIGINAL, "category": "Courses"}
+        edited = {"Libellé": original["label"], "Catégorie": "", "Exceptionnel": False}
+        assert operation_changes(original, edited) == {"category": None}

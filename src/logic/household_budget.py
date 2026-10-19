@@ -141,3 +141,25 @@ def retro_classify(
             )
 
     return [{"id": row_id, **fields} for row_id, fields in updates.items()]
+
+
+def operation_changes(original: dict[str, Any], edited: dict[str, Any]) -> dict[str, Any]:
+    """Champs modifiés d'une opération corrigée dans le tableau du mois.
+
+    Args:
+        original: l'opération en base (label, category, is_exceptional).
+        edited: la ligne du tableau (Libellé, Catégorie, Exceptionnel).
+
+    Returns:
+        {champ: nouvelle valeur} pour les seuls champs qui changent (vide si rien).
+    """
+    changes: dict[str, Any] = {}
+    label = (edited.get("Libellé") or "").strip()
+    if label and label != original["label"]:
+        changes["label"] = label
+    category = edited.get("Catégorie") or None
+    if category != (original.get("category") or None):
+        changes["category"] = category
+    if bool(edited.get("Exceptionnel")) != bool(original.get("is_exceptional")):
+        changes["is_exceptional"] = bool(edited.get("Exceptionnel"))
+    return changes

@@ -14,13 +14,19 @@ from src.logic.household_budget import (
     common_expenses,
     contributions,
     exceptional_operations,
+    operation_changes,
     regular_operations,
     spending_by_payer,
     summarize,
 )
 from src.logic.revenue import _MONTH_LABELS, aggregate_monthly_from_df, pivot_by_category_month
-from src.services.db_reader import invalidate_cache, read_statement_balances, read_transactions
-from src.services.supabase import bulk_update_transaction_fields, fetch_accounts
+from src.services.db_reader import (
+    invalidate_cache,
+    read_categories,
+    read_statement_balances,
+    read_transactions,
+)
+from src.services.supabase import bulk_update_transaction_fields, fetch_accounts, update_transaction
 
 st.set_page_config(page_title="Budget Foyer", page_icon="🏠", layout="wide")
 require_auth()
@@ -167,6 +173,63 @@ else:
                     hide_index=True, width="stretch",
                     column_config={c: st.column_config.NumberColumn(format="%.2f €") for c in numeric},
                 )
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Opérations du mois (corrections)
+# ---------------------------------------------------------------------------
+month_all_df = household_df.filter(pl.col("date").is_between(month_start, month_end)).sort(
+    "date", descending=True
+)
+st.subheader(f"Opérations de {_MONTH_LABELS[month]} {year} ({month_all_df.height})")
+st.caption(
+    "Corrige un libellé ou une catégorie, ou coche **Exceptionnel** pour sortir une opération du "
+    "budget courant sans la supprimer (le solde du compte reste juste). Utile pour une erreur "
+    "bancaire, un aller-retour, un apport…"
+)
+if month_all_df.is_empty():
+    st.caption("Aucune opération ce mois-ci.")
+else:
+    month_rows = month_all_df.to_dicts()
+    household_categories = read_categories(business_id=str(BusinessId.HOUSEHOLD))
+    category_options = (
+        sorted(household_categories["name"].unique().to_list())
+        if not household_categories.is_empty() else []
+    )
+    edited_month = st.data_editor(
+        pl.DataFrame({
+            "id": [r["id"] for r in month_rows],
+            "Date": [r["date"] for r in month_rows],
+            "Libellé": [r["label"] for r in month_rows],
+            "Catégorie": [r["category"] or "" for r in month_rows],
+            "Montant": [r["amount"] for r in month_rows],
+            "Exceptionnel": [bool(r.get("is_exceptional")) for r in month_rows],
+        }).to_pandas(),
+        hide_index=True, width="stretch",
+        disabled=["id", "Date", "Montant"],
+        column_config={
+            "id": None,
+            "Montant": st.column_config.NumberColumn(format="%.2f €"),
+            "Catégorie": st.column_config.SelectboxColumn(options=["", *category_options]),
+            "Exceptionnel": st.column_config.CheckboxColumn(),
+        },
+        key="foyer_month_ops",
+    )
+    if st.button("Enregistrer les corrections", key="foyer_month_save", type="primary"):
+        originals = {r["id"]: r for r in month_rows}
+        saved = 0
+        try:
+            for row in edited_month.to_dict("records"):
+                changes = operation_changes(originals[row["id"]], row)
+                if changes:
+                    update_transaction(row["id"], changes)
+                    saved += 1
+            invalidate_cache()
+            st.toast(f"{saved} opération(s) corrigée(s).", icon="✅")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Erreur : {exc}")
 
 st.divider()
 
