@@ -171,7 +171,7 @@ def plan_edits(
         if final != current:
             fields["category"] = final
 
-        exceptional = row.get("Exceptionnel")
+        exceptional = row.get("Ne pas compter dans le mois")
         if exceptional is not None and bool(exceptional) != bool(tx.get("is_exceptional")):
             fields["is_exceptional"] = bool(exceptional)
 
@@ -200,7 +200,7 @@ def plan_bulk(
             "Libellé": tx["label"],
             "Budget": business_id or tx["business_id"],
             "Catégorie": category or tx.get("category"),
-            "Exceptionnel": exceptional,
+            "Ne pas compter dans le mois": exceptional,
         })
     return plan_edits(selected, edited, categories)
 

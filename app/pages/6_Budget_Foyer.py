@@ -29,13 +29,13 @@ from src.services.db_reader import (
 )
 from src.services.supabase import bulk_update_transaction_fields, fetch_accounts, update_transaction
 
-st.set_page_config(page_title="Budget Foyer", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Budget du foyer", page_icon="🏠", layout="wide")
 require_auth()
 page_title("Budget du foyer", "foyer")
 st.caption(
     "Le compte commun : ce que Charlotte et Bruno y mettent, ce qui en sort. "
     "Les achats perso de Charlotte (carte cochée « perso ») n'y figurent pas — ils sont "
-    "dans Budget Perso."
+    "dans Mon budget."
 )
 
 
@@ -51,13 +51,13 @@ except Exception as exc:
     st.stop()
 
 if household_df.is_empty():
-    st.info("Aucune opération du compte commun pour l'instant : importe un relevé depuis la page Sync.")
+    st.info("Aucune opération du compte commun pour l'instant : importe un relevé depuis la page Importer.")
     st.stop()
 
 n_uncategorized = household_df.filter(pl.col("category").is_null()).height
 if n_uncategorized:
     st.warning(f"{n_uncategorized} opération(s) du foyer pas encore classée(s).")
-    st.page_link("pages/1_A_Traiter.py", label="Les classer dans « À traiter »", icon="📥")
+    st.page_link("pages/1_A_Traiter.py", label="Les classer dans « À classer »", icon="📥")
 
 # ---------------------------------------------------------------------------
 # Période
@@ -184,7 +184,7 @@ month_all_df = household_df.filter(pl.col("date").is_between(month_start, month_
 )
 section_title(f"Opérations de {_MONTH_LABELS[month]} {year} ({month_all_df.height})", "foyer_operations")
 st.caption(
-    "Corrige un libellé ou une catégorie, ou coche **Exceptionnel** pour sortir une opération du "
+    "Corrige un libellé ou une catégorie, ou coche **Ne pas compter dans le mois** pour sortir une opération du "
     "budget courant sans la supprimer (le solde du compte reste juste). Utile pour une erreur "
     "bancaire, un aller-retour, un apport…"
 )
@@ -204,7 +204,7 @@ else:
             "Libellé": [r["label"] for r in month_rows],
             "Catégorie": [r["category"] or "" for r in month_rows],
             "Montant": [r["amount"] for r in month_rows],
-            "Exceptionnel": [bool(r.get("is_exceptional")) for r in month_rows],
+            "Ne pas compter dans le mois": [bool(r.get("is_exceptional")) for r in month_rows],
         }).to_pandas(),
         hide_index=True, width="stretch",
         disabled=["id", "Date", "Montant"],
@@ -212,7 +212,7 @@ else:
             "id": None,
             "Montant": st.column_config.NumberColumn(format="%.2f €"),
             "Catégorie": st.column_config.SelectboxColumn(options=["", *category_options]),
-            "Exceptionnel": st.column_config.CheckboxColumn(),
+            "Ne pas compter dans le mois": st.column_config.CheckboxColumn(),
         },
         key="foyer_month_ops",
     )
@@ -237,7 +237,7 @@ st.divider()
 # Opérations exceptionnelles
 # ---------------------------------------------------------------------------
 exceptional = exceptional_operations(household_df).sort("date", descending=True)
-section_title(f"Opérations exceptionnelles ({exceptional.height})", "foyer_exceptionnelles")
+section_title(f"Opérations hors du mois ({exceptional.height})", "foyer_exceptionnelles")
 st.caption(
     "Hors budget courant (apport, caution, clôture de compte…). Décoche pour remettre une "
     "opération dans le budget."
@@ -253,7 +253,7 @@ else:
             "Libellé": [r["label"] for r in exc_rows],
             "Catégorie": [r["category"] or "" for r in exc_rows],
             "Montant": [r["amount"] for r in exc_rows],
-            "Exceptionnel": [True] * len(exc_rows),
+            "Ne pas compter dans le mois": [True] * len(exc_rows),
         }).to_pandas(),
         hide_index=True, width="stretch",
         disabled=["id", "Date", "Libellé", "Catégorie", "Montant"],
@@ -263,7 +263,7 @@ else:
     if st.button("Enregistrer", key="foyer_exceptional_save"):
         updates = [
             {"id": r["id"], "is_exceptional": False}
-            for r in edited.to_dict("records") if not r["Exceptionnel"]
+            for r in edited.to_dict("records") if not r["Ne pas compter dans le mois"]
         ]
         try:
             bulk_update_transaction_fields(updates)

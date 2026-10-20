@@ -31,7 +31,7 @@ st.caption(
     "Une règle range automatiquement les opérations importées dont le libellé contient son "
     "**motif** : elle donne une catégorie et, si tu le précises, un autre budget. Quand plusieurs "
     "règles s'appliquent, **la plus prioritaire gagne** (priorité haute = appliquée en premier). "
-    "Les règles créées depuis « À traiter » ont la priorité 200."
+    "Les règles créées depuis « À classer » ont la priorité 200."
 )
 
 _MESSAGES_KEY = "_rules_messages"
@@ -65,7 +65,7 @@ col_b.metric("Masquées", n_shadowed, help="Actives, avec des correspondances, m
 col_c.metric("Jamais utilisées", sum(1 for r in rules if not stats[r["id"]]["matches"]))
 
 if not rules:
-    st.info("Aucune règle pour l'instant : elles se créent depuis la page « À traiter » (case Règle).")
+    st.info("Aucune règle pour l'instant : elles se créent depuis la page « À classer » (case Règle).")
 else:
     st.subheader("Mes règles")
     editor_df = pl.DataFrame({
@@ -127,14 +127,14 @@ section_title("Tester un libellé", "regles_test")
 st.caption("Colle un libellé de ton relevé pour voir quelle règle le rangerait, et comment.")
 col_label, col_budget, col_amount = st.columns([3, 1, 1])
 test_text = col_label.text_input("Libellé", placeholder="PAIEMENT CB 0810 LYON DELIVEROO CARTE 3935", key="rules_test_label")
-test_budget = col_budget.selectbox("Budget de la ligne", ["Foyer", "Perso", "Phi Rising", "Booth in Lyon"], key="rules_test_budget")
+test_budget = col_budget.selectbox("Budget de la ligne", ["Notre foyer", "Moi", "Phi Rising", "Booth in Lyon"], key="rules_test_budget")
 test_sign = col_amount.selectbox("Sens", ["Dépense", "Revenu"], key="rules_test_sign")
 if test_text:
-    business = {"Foyer": "household", "Perso": "personal", "Phi Rising": "phi_rising",
+    business = {"Notre foyer": "household", "Moi": "personal", "Phi Rising": "phi_rising",
                 "Booth in Lyon": "booth_in_lyon"}[test_budget]
     winner = which_rule(rules, test_text, business, 1.0 if test_sign == "Revenu" else -1.0)
     if winner is None:
-        st.info("Aucune règle ne range ce libellé : il arriverait dans « À traiter ».")
+        st.info("Aucune règle ne range ce libellé : il arriverait dans « À classer ».")
     else:
         target = TARGET_LABELS.get(winner.get("target_business_id"))
         st.success(

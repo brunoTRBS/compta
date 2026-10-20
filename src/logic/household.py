@@ -2,22 +2,20 @@
 
 Le compte commun est alimenté chaque mois par la participation de l'utilisatrice,
 qui couvre toutes les dépenses communes. Ses opérations sont donc importées en
-l'activité « household » (hors budget perso), à deux exceptions près, soumises à vérification :
+l'activité « household » (hors budget perso). Tout compte pour le foyer tant que
+l'utilisatrice ne le change pas ligne par ligne (« Ça compte pour » dans À traiter), y compris
+ses achats avec sa propre carte. Une seule exception, soumise à vérification :
 
-- ses paiements avec sa propre carte : par défaut une dépense du foyer, mais
-  certains sont des achats perso à compter dans son budget ;
 - les virements qu'elle y fait : la participation mensuelle, qui devient une
   dépense dans son budget perso.
 """
 
-import re
 import uuid
 from typing import Any
 
 from src.config import (
     EXCEPTIONAL_THRESHOLD,
     HOUSEHOLD_REGULAR_CATEGORIES,
-    JOINT_OWN_CARD,
     JOINT_OWN_NAME_PATTERNS,
     PARTICIPATION_CATEGORY,
     PARTICIPATION_LABEL,
@@ -26,7 +24,6 @@ from src.config import (
 from src.logic.scopes import default_business_id, is_household  # noqa: F401  (ré-exportés)
 from src.logic.transfers import find_rejected_pairs
 
-KIND_CARD = "card"
 KIND_PARTICIPATION = "participation"
 
 _PARTICIPATION_SUFFIX = "_part"
@@ -39,12 +36,9 @@ def _bank_label(tx: dict[str, Any]) -> str:
 def review_kind(tx: dict[str, Any]) -> str | None:
     """Type de vérification nécessaire pour une opération du compte commun, ou None.
 
-    - KIND_CARD : paiement avec la carte de l'utilisatrice ;
     - KIND_PARTICIPATION : virement reçu de sa part (hors rejet de virement).
     """
     label = _bank_label(tx)
-    if re.search(rf"\bCARTE {re.escape(JOINT_OWN_CARD)}\b", label):
-        return KIND_CARD
     if (
         float(tx["amount"]) > 0
         and not label.startswith("REJ")

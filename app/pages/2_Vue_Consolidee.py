@@ -15,16 +15,16 @@ from src.logic.household_budget import regular_operations
 from src.logic.revenue import _MONTH_LABELS, aggregate_monthly_from_df
 from src.services.db_reader import read_accounts, read_transactions
 
-st.set_page_config(page_title="Vue consolidée", page_icon="🧮", layout="wide")
+st.set_page_config(page_title="Tout ensemble", page_icon="🧮", layout="wide")
 require_auth()
-page_title("Vue consolidée", "vue_consolidee")
-st.caption("Perso, Phi Rising et Booth in Lyon sur une même vue — flux du mois et détail par compte réel.")
+page_title("Tout ensemble", "vue_consolidee")
+st.caption("Moi, Phi Rising et Booth in Lyon sur une même vue — flux du mois et détail par compte réel.")
 
 _BUSINESS_LABELS: dict[str, str] = {
-    "Perso": str(BusinessId.PERSONAL),
+    "Moi": str(BusinessId.PERSONAL),
     "Phi Rising": str(BusinessId.PHI_RISING),
     "Booth in Lyon": str(BusinessId.BOOTH_IN_LYON),
-    "Foyer": str(BusinessId.HOUSEHOLD),
+    "Notre foyer": str(BusinessId.HOUSEHOLD),
 }
 _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
 _MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
@@ -64,7 +64,7 @@ for label, biz_id in _BUSINESS_LABELS.items():
 cols = st.columns(len(_BUSINESS_LABELS) + 1)
 # Le foyer est exclu du total : il est alimenté par ta participation (déjà une dépense du
 # budget perso) et contient les revenus de Bruno.
-_counted = {k: v for k, v in summaries.items() if k != "Foyer"}
+_counted = {k: v for k, v in summaries.items() if k != "Notre foyer"}
 total_income = sum(s["income"] for s in _counted.values())
 total_expenses = sum(s["expenses"] for s in _counted.values())
 
@@ -80,7 +80,7 @@ with cols[-1]:
     st.metric("Revenus", f"{total_income:,.2f} €")
     st.metric("Dépenses", f"{total_expenses:,.2f} €")
     st.metric("Solde", f"{total_income - total_expenses:,.2f} €")
-    st.caption("Perso + Phi Rising + Booth in Lyon (le Foyer n'est pas additionné).")
+    st.caption("Moi + Phi Rising + Booth in Lyon (le foyer n'est pas additionné).")
 
 st.divider()
 

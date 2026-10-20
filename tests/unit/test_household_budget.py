@@ -122,7 +122,7 @@ class TestOperationChanges:
         from src.logic.household_budget import operation_changes
 
         edited = {"Libellé": "Erreur bancaire - fonds pro renvoyés", "Catégorie": "Divers",
-                  "Exceptionnel": True}
+                  "Ne pas compter dans le mois": True}
         assert operation_changes(self.ORIGINAL, edited) == {
             "label": "Erreur bancaire - fonds pro renvoyés",
             "category": "Divers",
@@ -132,12 +132,12 @@ class TestOperationChanges:
     def test_nothing_changed(self):
         from src.logic.household_budget import operation_changes
 
-        edited = {"Libellé": self.ORIGINAL["label"], "Catégorie": "", "Exceptionnel": False}
+        edited = {"Libellé": self.ORIGINAL["label"], "Catégorie": "", "Ne pas compter dans le mois": False}
         assert operation_changes(self.ORIGINAL, edited) == {}
 
     def test_clearing_a_category(self):
         from src.logic.household_budget import operation_changes
 
         original = {**self.ORIGINAL, "category": "Courses"}
-        edited = {"Libellé": original["label"], "Catégorie": "", "Exceptionnel": False}
+        edited = {"Libellé": original["label"], "Catégorie": "", "Ne pas compter dans le mois": False}
         assert operation_changes(original, edited) == {"category": None}

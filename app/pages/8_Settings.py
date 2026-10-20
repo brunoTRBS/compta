@@ -32,14 +32,14 @@ from src.utils.health import HealthStatus, run_all_checks
 
 st.set_page_config(page_title="Paramètres", page_icon="⚙️", layout="wide")
 require_auth()
-page_title("Paramètres & Statut", "settings")
+page_title("Paramètres", "settings")
 
 # ---------------------------------------------------------------------------
 # Catégories partagées
 # ---------------------------------------------------------------------------
 section_title("Catégories", "settings_categories")
 st.caption(
-    "Une liste commune à Perso, Foyer et activités pro, pour pouvoir comparer. "
+    "Une liste commune à Mon budget, au foyer et aux activités pro, pour pouvoir comparer. "
     "Chaque catégorie est rangée dans un groupe (Logement, Alimentation…) : les graphiques "
     "montrent l'essentiel par groupe et le détail par catégorie."
 )
@@ -143,8 +143,8 @@ with tab_list:
 with tab_cleanup:
     tab_help("settings_cleanup")
     st.caption(
-        "Renommages proposés pour aligner ton historique Perso et Foyer sur la liste commune. "
-        "Chacun met à jour d'un coup toutes les opérations, règles et récurrences concernées."
+        "Renommages proposés pour aligner ton historique de Mon budget et du foyer sur la liste commune. "
+        "Chacun met à jour d'un coup toutes les opérations et règles concernées."
     )
     existing_shared = {
         c["name"] for c in all_categories if c["business_id"] in SHARED_SCOPES

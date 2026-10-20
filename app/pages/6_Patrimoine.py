@@ -29,10 +29,10 @@ from src.services.supabase import (
 
 st.set_page_config(page_title="Patrimoine", page_icon="🏦", layout="wide")
 require_auth()
-page_title("Bilan Patrimonial", "patrimoine")
+page_title("Patrimoine", "patrimoine")
 
 _OWNER_LABELS = {
-    "personal": "Perso",
+    "personal": "Moi",
     "phi_rising": "Phi Rising",
     "booth_in_lyon": "Booth in Lyon",
 }

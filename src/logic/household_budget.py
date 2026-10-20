@@ -154,6 +154,6 @@ def operation_changes(original: dict[str, Any], edited: dict[str, Any]) -> dict[
     category = edited.get("Catégorie") or None
     if category != (original.get("category") or None):
         changes["category"] = category
-    if bool(edited.get("Exceptionnel")) != bool(original.get("is_exceptional")):
-        changes["is_exceptional"] = bool(edited.get("Exceptionnel"))
+    if bool(edited.get("Ne pas compter dans le mois")) != bool(original.get("is_exceptional")):
+        changes["is_exceptional"] = bool(edited.get("Ne pas compter dans le mois"))
     return changes

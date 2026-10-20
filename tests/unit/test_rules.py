@@ -54,7 +54,7 @@ class TestTestLabel:
 
 
 def _edited(rule, **overrides):
-    row = {"id": rule["id"], "Motif": rule["pattern"], "Budget visé": "Foyer" if rule["business_id"] == "household" else "Tous (hors foyer)",
+    row = {"id": rule["id"], "Motif": rule["pattern"], "Budget visé": "Foyer" if rule["business_id"] == "household" else "Tous (sauf le foyer)",
            "Sens": "Dépenses", "Catégorie": rule["category"], "Ranger dans": "Reste dans son budget",
            "Priorité": rule["priority"], "Actif": rule["is_active"], "Supprimer": False}
     return {**row, **overrides}
@@ -66,7 +66,7 @@ class TestDiff:
 
     def test_changes_only_what_changed(self):
         updates, deletes, errors = diff_rules(
-            [RULES[0]], [_edited(RULES[0], Motif="E LECLERC", **{"Ranger dans": "Perso"}, Priorité=160)])
+            [RULES[0]], [_edited(RULES[0], Motif="E LECLERC", **{"Ranger dans": "Moi"}, Priorité=160)])
         assert updates == {"r1": {"pattern": "E LECLERC", "target_business_id": "personal", "priority": 160}}
         assert deletes == [] and errors == []
 

@@ -1,4 +1,4 @@
-"""Page À traiter — la boîte de réception unique : tout ce qui demande un geste après un import."""
+"""Page À classer — la boîte de réception unique : tout ce qui demande un geste après un import."""
 
 import math
 from typing import Any
@@ -10,23 +10,33 @@ from app.components.auth import require_auth
 from app.components.help import page_title
 from app.components.reconciliation_section import render_reconciliation_section
 from src.config import BusinessId
-from src.logic.household import propose_exceptional
 from src.logic.household_budget import retro_classify
 from src.logic.import_pipeline import match_manual_entries
 from src.logic.inbox import (
     AFFECTATIONS,
-    TRANSFER,
+    COL_ACCOUNT,
+    COL_AMOUNT,
+    COL_BANK_CATEGORY,
+    COL_BANK_LABEL,
+    COL_CATEGORY,
+    COL_COUNTS_FOR,
+    COL_DATE,
+    COL_FROM,
+    COL_LABEL,
+    COL_OFF_MONTH,
+    COL_PATTERN,
+    COL_REASON,
+    COL_RULE,
+    COL_SUGGESTED,
+    COL_TO,
     account_label,
     category_suggestions_from_history,
-    inbox_reason,
     inbox_rows,
+    inbox_table,
     plan_inbox_changes,
-    proposed_affectation,
     rule_updates,
-    suggest_category,
-    suggest_pattern,
+    visible_columns,
 )
-from src.logic.transfers import default_counterpart
 from src.services.db_reader import (
     invalidate_cache,
     read_categories,
@@ -43,21 +53,14 @@ from src.services.supabase import (
     link_transactions_to_bank,
 )
 
-st.set_page_config(page_title="À traiter", page_icon="📥", layout="wide")
+st.set_page_config(page_title="À classer", page_icon="📥", layout="wide")
 require_auth()
-page_title("À traiter", "a_traiter")
+page_title("À classer", "a_traiter")
 
 _MESSAGES_KEY = "_inbox_messages"
 _VERSION_KEY = "_inbox_version"
 # La participation peut être saisie à la main n'importe quand dans le mois
 _PARTICIPATION_MATCH_WINDOW_DAYS = 10
-_ICONS = {
-    TRANSFER: "🔁",
-    str(BusinessId.HOUSEHOLD): "🏠",
-    str(BusinessId.PERSONAL): "👤",
-    str(BusinessId.PHI_RISING): "💼",
-    str(BusinessId.BOOTH_IN_LYON): "📸",
-}
 
 # Messages laissés par l'enregistrement précédent (la page est rechargée après)
 for kind, text in st.session_state.pop(_MESSAGES_KEY, []):
@@ -82,7 +85,6 @@ except Exception as exc:
     st.error(f"Impossible de charger les données : {exc}")
     st.stop()
 
-account_names = {a["id"]: a["name"] for a in accounts}
 categories: dict[str, dict[str, set[str]]] = {}
 for cat in categories_df.to_dicts() if not categories_df.is_empty() else []:
     categories.setdefault(cat["business_id"], {}).setdefault(cat["direction"], set()).add(cat["name"])
@@ -90,107 +92,79 @@ suggestions = category_suggestions_from_history(all_df)
 
 inbox_df = inbox_rows(all_df)
 rows = inbox_df.to_dicts() if not inbox_df.is_empty() else []
-n_review = sum(1 for r in rows if r.get("needs_review"))
 
 # ---------------------------------------------------------------------------
 # En-tête
 # ---------------------------------------------------------------------------
-col_a, col_b, col_c = st.columns([1, 1, 2])
-col_a.metric("À traiter", len(rows))
-col_b.metric("Dont à vérifier", n_review, help="Ta carte sur le commun, ta participation, virements")
-with col_c:
+col_a, col_b = st.columns([1, 3])
+col_a.metric("À classer", len(rows))
+with col_b:
     st.page_link("pages/7_Sync.py", label="Importer un relevé", icon="🔄")
 
 if not rows:
     st.success("Tout est classé. 🎉")
 else:
-    st.caption(
-        "Chaque ligne a une **affectation** (le budget où elle compte) et une **catégorie**. "
-        "Corrige ce qui est faux, puis **Enregistrer** : les lignes à vérifier laissées telles "
-        "quelles sont validées. ✨ = catégorie suggérée d'après tes choix passés. Coche **Règle** "
-        "pour que les prochaines opérations avec ce motif se rangent seules (si tu as changé "
-        "l'affectation, la règle la change aussi). Un virement reçu classé « Participation "
-        "Charlotte » crée ta dépense « Participation foyer » dans ton budget perso."
+    st.markdown(
+        "Pour chaque ligne : choisis **pour qui elle compte** et sa **catégorie**, "
+        "puis clique sur **Enregistrer**. Les lignes avec ✨ sont déjà proposées : "
+        "tu peux les garder telles quelles."
+    )
+    details = st.toggle(
+        "Plus de détails", key="inbox_details",
+        help="Libellé de la banque, mot reconnu, « ne pas compter dans le mois », "
+             "et le choix de l'autre compte d'un virement.",
     )
 
-    transfer_options = [account_label(a) for a in accounts]
-    affectation_labels = list(AFFECTATIONS.values())
-    frames: dict[str, Any] = {}
-
-    for key, label in AFFECTATIONS.items():
-        block = [r for r in rows if proposed_affectation(r) == key]
-        if not block:
-            continue
-        block.sort(key=lambda r: (not r.get("needs_review"), -r["date"].toordinal()))
-        is_household = key == str(BusinessId.HOUSEHOLD)
-        is_transfer = key == TRANSFER
-        scope_cats = categories.get(key, {})
-        category_options = sorted(scope_cats.get("expense", set()) | scope_cats.get("income", set()))
-
-        suggested = []
-        for r in block:
-            direction = "income" if r["amount"] > 0 else "expense"
-            suggested.append(
-                suggest_category(r, suggestions, sorted(categories.get(r["business_id"], {}).get(direction, set())))
-            )
-
-        counterparts = []
-        for r in block:
-            account = default_counterpart(r, accounts) if is_transfer else None
-            counterparts.append(account_label(account) if account else None)
-
-        columns: dict[str, list[Any]] = {
-            "id": [r["id"] for r in block],
-            "Type": [inbox_reason(r) for r in block],
-            "Date": [r["date"] for r in block],
-            "Compte": [account_names.get(r["account_id"], "—") for r in block],
-            "Libellé": [r["label"] for r in block],
-            "Libellé banque": [r.get("raw_label") or "" for r in block],
-            "Montant": [r["amount"] for r in block],
-            "Affectation": [label] * len(block),
-            "Autre compte": counterparts,
-        }
-        if not is_transfer:
-            columns |= {
-                "Catégorie banque": [r.get("bank_category") or "" for r in block],
-                "✨": ["✨" if s and not r.get("category") else "" for r, s in zip(block, suggested, strict=True)],
-                "Catégorie": [r.get("category") or s for r, s in zip(block, suggested, strict=True)],
-            }
-            if is_household:
-                columns["Exceptionnel"] = [
-                    bool(r.get("is_exceptional")) or propose_exceptional(r) for r in block
-                ]
-            columns |= {"Règle": [False] * len(block), "Motif": [suggest_pattern(r) for r in block]}
-
-        st.markdown(f"#### {_ICONS[key]} {label} ({len(block)})")
-        frames[key] = st.data_editor(
-            pl.DataFrame(columns, schema_overrides={"Catégorie": pl.Utf8, "Autre compte": pl.Utf8}).to_pandas(),
-            hide_index=True,
-            width="stretch",
-            disabled=["id", "Type", "Date", "Compte", "Libellé banque", "Montant", "Catégorie banque", "✨"],
-            column_config={
-                "id": None,
-                "Montant": st.column_config.NumberColumn(format="%.2f €"),
-                "Affectation": st.column_config.SelectboxColumn(options=affectation_labels, required=True),
-                "Autre compte": st.column_config.SelectboxColumn(
-                    options=transfer_options, help="Pour un virement interne : l'autre compte"
-                ),
-                "Catégorie": st.column_config.SelectboxColumn(options=category_options),
-                "Exceptionnel": st.column_config.CheckboxColumn(
-                    help="Hors budget courant (apport, caution, erreur…) : affiché à part"
-                ),
-                "Règle": st.column_config.CheckboxColumn(help="Ranger les prochaines automatiquement"),
-                "Motif": st.column_config.TextColumn(help="Texte recherché dans le libellé"),
-            },
-            key=f"inbox_{key}_v{version}",
-        )
+    table = inbox_table(rows, accounts, categories, suggestions)
+    shown = visible_columns(table, details)
+    all_account_labels = [account_label(a) for a in accounts]
+    category_options = sorted({
+        name for by_direction in categories.values() for names in by_direction.values() for name in names
+    })
+    always_locked = [
+        "id", COL_REASON, COL_DATE, COL_ACCOUNT, COL_AMOUNT, COL_SUGGESTED, COL_BANK_LABEL,
+        COL_BANK_CATEGORY,
+    ]
+    frame = st.data_editor(
+        pl.DataFrame(
+            {name: table[name] for name in shown},
+            schema_overrides={COL_CATEGORY: pl.Utf8, COL_FROM: pl.Utf8, COL_TO: pl.Utf8},
+        ).to_pandas(),
+        hide_index=True,
+        width="stretch",
+        disabled=[name for name in always_locked if name in shown],
+        column_config={
+            "id": None,
+            COL_AMOUNT: st.column_config.NumberColumn(format="%.2f €"),
+            COL_COUNTS_FOR: st.column_config.SelectboxColumn(
+                options=list(AFFECTATIONS.values()), required=True,
+                help="Le budget où cette ligne compte. Par défaut : celui du compte.",
+            ),
+            COL_CATEGORY: st.column_config.SelectboxColumn(options=category_options),
+            COL_RULE: st.column_config.CheckboxColumn(
+                help="Les prochaines lignes avec le même mot seront rangées toutes seules."
+            ),
+            COL_FROM: st.column_config.SelectboxColumn(
+                options=all_account_labels, help="Le compte d'où l'argent est parti."
+            ),
+            COL_TO: st.column_config.SelectboxColumn(
+                options=all_account_labels, help="Le compte où l'argent est arrivé."
+            ),
+            COL_PATTERN: st.column_config.TextColumn(help="Le mot cherché dans le libellé de la banque."),
+            COL_OFF_MONTH: st.column_config.CheckboxColumn(
+                help="Pour une dépense ou une rentrée hors du quotidien (apport, caution, erreur…) : "
+                     "affichée à part dans le budget du foyer."
+            ),
+        },
+        key=f"inbox_v{version}_{int(details)}",
+    )
 
     if st.button("✅ Enregistrer", type="primary", key="inbox_save"):
-        edited_records = [
-            {k: _clean(v) for k, v in record.items()}
-            for frame in frames.values()
-            for record in frame.to_dict("records")
-        ]
+        edited_records = [{k: _clean(v) for k, v in record.items()} for record in frame.to_dict("records")]
+        # Colonnes masquées : on reprend le mot reconnu proposé pour « Pareil la prochaine fois »
+        default_patterns = dict(zip(table["id"], table[COL_PATTERN], strict=True))
+        for record in edited_records:
+            record.setdefault(COL_PATTERN, default_patterns.get(record["id"]))
         plan = plan_inbox_changes(rows, edited_records, accounts, categories)
         try:
             insert_transactions(plan.legs)

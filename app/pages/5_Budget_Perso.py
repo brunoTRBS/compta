@@ -1,4 +1,4 @@
-"""Page Budget Personnel — transactions, récurrences, virements, vues mensuelle/globale."""
+"""Page Budget Personnel — transactions, vues mensuelle/globale."""
 
 import calendar
 from datetime import date
@@ -10,9 +10,7 @@ import streamlit as st
 from app.components.auth import require_auth
 from app.components.help import page_title, section_title, tab_help
 from app.components.breakdown_section import render_spending_breakdown
-from app.components.recurring_section import render_recurring_section
 from app.components.transaction_table import render_editable_transactions
-from app.components.transfer_section import render_transfer_section
 from src.config import (
     PERSO_OPENING_BALANCE,
     PERSO_OPENING_BALANCE_MONTH,
@@ -40,9 +38,9 @@ from src.services.db_reader import (
 )
 from src.services.supabase import bulk_update_categories, fetch_categorization_rules
 
-st.set_page_config(page_title="Budget Perso", page_icon="💰", layout="wide")
+st.set_page_config(page_title="Mon budget", page_icon="💰", layout="wide")
 require_auth()
-page_title("Budget Personnel", "perso_page")
+page_title("Mon budget", "perso_page")
 
 _SAVINGS_CATEGORY = "Épargne"
 _MONTHS_LIST: list[str] = [_MONTH_LABELS[m] for m in range(1, 13)]
@@ -57,8 +55,8 @@ def _show_pivot(pivot: pl.DataFrame) -> None:
     st.dataframe(renamed.to_pandas(), width='stretch', hide_index=True, column_config=col_cfg)
 
 
-tab_tx, tab_recurring, tab_transfer, tab_monthly, tab_global = st.tabs(
-    ["🏷️ Transactions", "📅 Récurrences", "🔁 Virement", "📅 Vue mensuelle", "📊 Vue globale"]
+tab_tx, tab_monthly, tab_global = st.tabs(
+    ["🏷️ Transactions", "📅 Vue mensuelle", "📊 Vue globale"]
 )
 
 # ---------------------------------------------------------------------------
@@ -137,24 +135,6 @@ with tab_tx:
         categories_by_direction=tx_categories_by_direction,
         account_options=perso_account_options,
     )
-
-# ---------------------------------------------------------------------------
-# Onglet Récurrences
-# ---------------------------------------------------------------------------
-with tab_recurring:
-    tab_help("recurrences")
-    st.caption(
-        "Définis un modèle une fois (loyer, abonnement, salaire...), "
-        "puis valide-le chaque mois en un clic au lieu de tout retaper."
-    )
-    render_recurring_section(key_prefix="budget_perso", business_id_filter=str(BusinessId.PERSONAL))
-
-# ---------------------------------------------------------------------------
-# Onglet Virement
-# ---------------------------------------------------------------------------
-with tab_transfer:
-    tab_help("virement")
-    render_transfer_section(key_prefix="budget_perso")
 
 # ---------------------------------------------------------------------------
 # Onglet Vue mensuelle

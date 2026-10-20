@@ -1,10 +1,11 @@
 """Boîte de réception « À traiter » : tout ce qui demande un geste après un import.
 
-Une ligne arrive ici pour l'une de quatre raisons : elle n'a pas de catégorie, c'est un
-paiement avec ta carte sur le compte commun (foyer ou perso ?), c'est ta participation au
-foyer, ou c'est un virement entre tes comptes dont l'autre côté n'est pas importé.
-Chaque ligne reçoit une affectation (Perso, Foyer, Phi Rising, Booth in Lyon, ou virement
-interne) et une catégorie ; un seul « Enregistrer » applique le tout (voir plan_inbox_changes).
+Une ligne arrive ici pour l'une de trois raisons : elle n'a pas de catégorie, c'est ta part du
+foyer (virement reçu sur le compte commun), ou c'est un virement entre tes comptes dont l'autre
+côté n'est pas importé. Chaque ligne indique « Payé avec » (le compte du relevé) et « Ça compte
+pour » (Notre foyer, Moi, Phi Rising, Booth in Lyon, ou un virement entre tes comptes), plus une
+catégorie ; un seul « Enregistrer » applique le tout (voir plan_inbox_changes).
+Tout ce qui vient du compte commun compte pour le foyer tant que tu ne le changes pas.
 
 Deux aides :
 - un motif de règle proposé à partir du libellé de la banque (« EasyPark »,
@@ -18,6 +19,7 @@ import re
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 import polars as pl
@@ -25,8 +27,13 @@ import polars as pl
 from src.config import HOUSEHOLD_PARTICIPATION_CATEGORY, JOINT_ACCOUNT_NAME, BusinessId
 from src.logic.categories import resolve_category
 from src.logic.categorizer import apply_rules
-from src.logic.household import KIND_CARD, KIND_PARTICIPATION, participation_expense, review_kind
-from src.logic.transfers import resolve_transfer_review
+from src.logic.household import (
+    KIND_PARTICIPATION,
+    participation_expense,
+    propose_exceptional,
+    review_kind,
+)
+from src.logic.transfers import default_counterpart, resolve_transfer_review
 
 # Priorité des règles créées depuis la file : au-dessus des règles génériques du seed
 USER_RULE_PRIORITY = 200
@@ -73,20 +80,40 @@ def suggest_pattern(tx: dict[str, Any]) -> str:
 
 TRANSFER = "transfer"
 
-# Affectations proposées, dans l'ordre d'affichage de la page
+# « Ça compte pour » : les choix proposés, dans l'ordre d'affichage
 AFFECTATIONS: dict[str, str] = {
-    TRANSFER: "Virement interne",
-    str(BusinessId.HOUSEHOLD): "Foyer",
-    str(BusinessId.PERSONAL): "Perso",
-    str(BusinessId.PHI_RISING): "Phi Rising",
-    str(BusinessId.BOOTH_IN_LYON): "Booth in Lyon",
+    str(BusinessId.HOUSEHOLD): "🏠 Notre foyer",
+    str(BusinessId.PERSONAL): "👤 Moi",
+    str(BusinessId.PHI_RISING): "💼 Phi Rising",
+    str(BusinessId.BOOTH_IN_LYON): "📸 Booth in Lyon",
+    TRANSFER: "🔁 Virement entre mes comptes",
 }
 _AFFECTATION_KEYS = {label: key for key, label in AFFECTATIONS.items()}
 
-REASON_CARD = "💳 Ta carte sur le commun"
-REASON_PARTICIPATION = "↘️ Ta participation"
-REASON_TRANSFER = "🔁 Virement entre tes comptes ?"
+REASON_PARTICIPATION = "↘️ Ta part du foyer"
+REASON_TRANSFER = "🔁 Virement ?"
 REASON_CLASSIFY = "🏷️ À classer"
+
+# Colonnes du tableau (le tableau et le calcul de l'enregistrement s'accordent sur ces noms)
+COL_REASON = "Pourquoi"
+COL_DATE = "Date"
+COL_ACCOUNT = "Payé avec"
+COL_LABEL = "Libellé"
+COL_AMOUNT = "Montant"
+COL_COUNTS_FOR = "Ça compte pour"
+COL_CATEGORY = "Catégorie"
+COL_SUGGESTED = "✨"
+COL_RULE = "Pareil la prochaine fois"
+COL_FROM = "De"
+COL_TO = "Vers"
+COL_PATTERN = "Mot reconnu"
+COL_OFF_MONTH = "Ne pas compter dans le mois"
+COL_BANK_LABEL = "Libellé de la banque"
+COL_BANK_CATEGORY = "Catégorie de la banque"
+
+_MAIN_COLUMNS = [COL_REASON, COL_DATE, COL_ACCOUNT, COL_LABEL, COL_AMOUNT, COL_COUNTS_FOR,
+                 COL_SUGGESTED, COL_CATEGORY, COL_RULE]
+_DETAIL_COLUMNS = [COL_PATTERN, COL_OFF_MONTH, COL_BANK_LABEL, COL_BANK_CATEGORY]
 
 
 def account_label(account: dict[str, Any]) -> str:
@@ -112,25 +139,21 @@ def inbox_reason(tx: dict[str, Any]) -> str:
     if tx.get("needs_review"):
         if tx.get("business_id") != str(BusinessId.HOUSEHOLD):
             return REASON_TRANSFER
-        kind = review_kind(tx)
-        if kind == KIND_CARD:
-            return REASON_CARD
-        if kind == KIND_PARTICIPATION:
+        if review_kind(tx) == KIND_PARTICIPATION:
             return REASON_PARTICIPATION
     return REASON_CLASSIFY
 
 
 def proposed_affectation(tx: dict[str, Any]) -> str:
-    """Affectation affichée au départ : celle de l'opération, ou « virement interne » pour
-    un virement à confirmer."""
+    """« Ça compte pour » affiché au départ : celui de l'opération, ou « virement entre mes
+    comptes » pour un virement à confirmer."""
     if inbox_reason(tx) == REASON_TRANSFER:
         return TRANSFER
     return tx["business_id"]
 
 
 def rule_updates(df: pl.DataFrame, rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Ce que les règles changent sur des opérations déjà en base : catégorie, affectation,
-    et fin de la vérification d'une carte du commun reconnue.
+    """Ce que les règles changent sur des opérations déjà en base : catégorie et budget.
 
     Returns:
         [{id, champ: valeur…}] — seules les opérations qui changent.
@@ -146,11 +169,6 @@ def rule_updates(df: pl.DataFrame, rules: list[dict[str, Any]]) -> list[dict[str
             fields["category"] = row["category"]
         if row["business_id"] != before["business_id"]:
             fields["business_id"] = row["business_id"]
-        if (
-            before.get("needs_review") and fields.get("category")
-            and review_kind(before) == KIND_CARD
-        ):
-            fields["needs_review"] = False
         if fields:
             updates.append({"id": row["id"], **fields})
     return updates
@@ -167,6 +185,95 @@ class InboxPlan:
     errors: list[str] = field(default_factory=list)
 
 
+def proposed_category(
+    tx: dict[str, Any],
+    suggestions: dict[tuple[str, str], str],
+    categories: dict[str, dict[str, set[str]]],
+) -> tuple[str | None, bool]:
+    """Catégorie affichée au départ pour une ligne, et si elle est une suggestion (✨).
+
+    Une catégorie déjà posée est gardée. Ta part du foyer reçoit « Participation Charlotte » :
+    il suffit d'enregistrer. Sinon, la catégorie la plus choisie jusqu'ici pour la catégorie
+    de la banque.
+    """
+    if tx.get("category"):
+        return tx["category"], False
+    if inbox_reason(tx) == REASON_PARTICIPATION:
+        return HOUSEHOLD_PARTICIPATION_CATEGORY, True
+    direction = "income" if float(tx["amount"]) > 0 else "expense"
+    allowed = sorted(categories.get(tx["business_id"], {}).get(direction, set()))
+    suggested = suggest_category(tx, suggestions, allowed)
+    return suggested, suggested is not None
+
+
+def inbox_table(
+    rows: list[dict[str, Any]],
+    accounts: list[dict[str, Any]],
+    categories: dict[str, dict[str, set[str]]],
+    suggestions: dict[tuple[str, str], str],
+) -> dict[str, list[Any]]:
+    """Colonnes du tableau « À traiter » (toutes, visibles ou non), une ligne par opération.
+
+    Les lignes à vérifier d'abord, puis les plus récentes. Pour un virement entre tes comptes,
+    « De » et « Vers » se lisent comme une phrase : le côté connu est le compte du relevé
+    (d'après le signe du montant), l'autre est proposé.
+    """
+    ordered = sorted(rows, key=lambda r: (not r.get("needs_review"), -_as_ordinal(r["date"])))
+    account_by_id = {a["id"]: a for a in accounts}
+    columns: dict[str, list[Any]] = {"id": [], COL_REASON: [], COL_DATE: [], COL_ACCOUNT: [],
+                                     COL_LABEL: [], COL_AMOUNT: [], COL_COUNTS_FOR: [],
+                                     COL_CATEGORY: [], COL_SUGGESTED: [], COL_RULE: [],
+                                     COL_FROM: [], COL_TO: [], COL_PATTERN: [],
+                                     COL_OFF_MONTH: [], COL_BANK_LABEL: [],
+                                     COL_BANK_CATEGORY: []}
+    for tx in ordered:
+        affectation = proposed_affectation(tx)
+        own = account_by_id.get(tx.get("account_id"))
+        own_label = account_label(own) if own else None
+        origin, destination = None, None
+        category, suggested = None, False
+        if affectation == TRANSFER:
+            other = default_counterpart(tx, accounts)
+            other_label = account_label(other) if other else None
+            origin, destination = (own_label, other_label) if float(tx["amount"]) < 0 \
+                else (other_label, own_label)
+        else:
+            category, suggested = proposed_category(tx, suggestions, categories)
+        columns["id"].append(tx["id"])
+        columns[COL_REASON].append(inbox_reason(tx))
+        columns[COL_DATE].append(tx["date"])
+        columns[COL_ACCOUNT].append(own["name"] if own else "—")
+        columns[COL_LABEL].append(tx["label"])
+        columns[COL_AMOUNT].append(tx["amount"])
+        columns[COL_COUNTS_FOR].append(AFFECTATIONS[affectation])
+        columns[COL_CATEGORY].append(category)
+        columns[COL_SUGGESTED].append("✨" if suggested and not tx.get("category") else "")
+        columns[COL_RULE].append(False)
+        columns[COL_FROM].append(origin)
+        columns[COL_TO].append(destination)
+        columns[COL_PATTERN].append(suggest_pattern(tx))
+        columns[COL_OFF_MONTH].append(bool(tx.get("is_exceptional")) or propose_exceptional(tx))
+        columns[COL_BANK_LABEL].append(tx.get("raw_label") or "")
+        columns[COL_BANK_CATEGORY].append(tx.get("bank_category") or "")
+    return columns
+
+
+def visible_columns(table: dict[str, list[Any]], details: bool) -> list[str]:
+    """Colonnes à afficher : l'essentiel ; les détails sur demande ; De/Vers dès qu'une ligne
+    est un virement entre tes comptes (sinon on ne saurait pas où choisir l'autre compte)."""
+    names = ["id", *_MAIN_COLUMNS]
+    has_transfer = any(label == AFFECTATIONS[TRANSFER] for label in table[COL_COUNTS_FOR])
+    if has_transfer or details:
+        names[names.index(COL_CATEGORY) + 1:names.index(COL_CATEGORY) + 1] = [COL_FROM, COL_TO]
+    if details:
+        names += _DETAIL_COLUMNS
+    return names
+
+
+def _as_ordinal(value: Any) -> int:
+    return value.toordinal() if hasattr(value, "toordinal") else date.fromisoformat(str(value)[:10]).toordinal()
+
+
 def plan_inbox_changes(
     originals: list[dict[str, Any]],
     edited: list[dict[str, Any]],
@@ -175,13 +282,14 @@ def plan_inbox_changes(
 ) -> InboxPlan:
     """Transforme les lignes de la boîte de réception, telles qu'affichées, en modifications.
 
-    Enregistrer valide aussi les lignes à vérifier laissées telles quelles : une carte du
-    commun reste au foyer, une participation reste une participation.
+    Enregistrer valide aussi les lignes à vérifier laissées telles quelles : ta part du foyer
+    reste une participation.
 
     Args:
         originals: opérations en base (id, business_id, label, category, amount, needs_review…).
-        edited: lignes du tableau après modification, avec les clés Libellé, Affectation,
-            Catégorie, "Autre compte", Exceptionnel (ou None), Règle, Motif.
+        edited: lignes du tableau après modification, avec les clés COL_* (Libellé, Ça compte
+            pour, Catégorie, De, Vers, Ne pas compter dans le mois (ou None), Pareil la prochaine
+            fois, Mot reconnu).
         accounts: comptes actifs.
         categories: {activité: {"expense": {noms}, "income": {noms}}}.
     """
@@ -195,25 +303,34 @@ def plan_inbox_changes(
             continue
         name = tx["label"]
         direction = "income" if float(tx["amount"]) > 0 else "expense"
-        affectation = _AFFECTATION_KEYS.get(row.get("Affectation") or "", proposed_affectation(tx))
+        affectation = _AFFECTATION_KEYS.get(row.get(COL_COUNTS_FOR) or "", proposed_affectation(tx))
         fields: dict[str, Any] = {}
 
-        label = (row.get("Libellé") or "").strip()
+        label = (row.get(COL_LABEL) or "").strip()
         if label and label != tx["label"]:
             fields["label"] = label
 
-        # --- virement entre deux de tes comptes -------------------------------------------
+        # --- virement entre deux de tes comptes ------------------------------------------
         if affectation == TRANSFER:
-            counterpart = accounts_by_label.get(row.get("Autre compte") or "")
-            if counterpart is None or counterpart["id"] == tx.get("account_id"):
-                plan.errors.append(f"« {name} » : choisis l'autre compte du virement.")
+            # L'autre côté est celui des deux choix (De, Vers) qui n'est pas le compte du relevé
+            chosen = {
+                accounts_by_label[value]["id"]: accounts_by_label[value]
+                for value in (row.get(COL_FROM), row.get(COL_TO))
+                if value in accounts_by_label and accounts_by_label[value]["id"] != tx.get("account_id")
+            }
+            if len(chosen) != 1:
+                plan.errors.append(
+                    f"« {name} » : choisis l'autre compte du virement (colonnes De et Vers, visibles avec « Plus de détails »)."
+                    if not chosen else f"« {name} » : un virement n'a qu'un autre compte, garde-en un seul."
+                )
                 if fields:
                     plan.updates.append({"id": tx["id"], **fields})
                 continue
+            counterpart = next(iter(chosen.values()))
             if counterpart["name"] == JOINT_ACCOUNT_NAME:
                 # Le compte commun a son propre relevé : on ne crée pas son côté, la ligne
-                # est seulement sortie des revenus / dépenses (la participation du foyer se
-                # traite sur la ligne reçue côté commun).
+                # est seulement sortie des revenus / dépenses (la part du foyer se traite
+                # sur la ligne reçue côté commun).
                 plan.updates.append({
                     "id": tx["id"], "needs_review": False, "is_transfer": True,
                     "transfer_group_id": str(uuid.uuid4()), **fields,
@@ -224,34 +341,34 @@ def plan_inbox_changes(
             plan.legs.extend(legs)
             continue
 
-        # --- affectation à un budget ------------------------------------------------------
+        # --- ça compte pour un budget ----------------------------------------------------
         if affectation != tx["business_id"]:
             fields["business_id"] = affectation
 
         valid = categories.get(affectation, {}).get(direction, set())
-        chosen = row.get("Catégorie") or None
+        chosen_category = row.get(COL_CATEGORY) or None
         current = tx.get("category") or None
-        final, rejected = resolve_category(current, chosen, valid)
+        final, rejected = resolve_category(current, chosen_category, valid)
         if rejected:
             plan.errors.append(
-                f"« {name} » : la catégorie « {chosen} » n'existe pas pour {AFFECTATIONS[affectation]} "
-                "(catégorie non appliquée)."
+                f"« {name} » : la catégorie « {chosen_category} » n'existe pas pour "
+                f"{AFFECTATIONS[affectation]} (catégorie non appliquée)."
             )
-            chosen = None
+            chosen_category = None
         if final != current:
             fields["category"] = final
 
         if tx.get("needs_review"):
             fields["needs_review"] = False
 
-        exceptional = row.get("Exceptionnel")
-        if exceptional is not None and bool(exceptional) != bool(tx.get("is_exceptional")):
-            fields["is_exceptional"] = bool(exceptional)
+        off_month = row.get(COL_OFF_MONTH)
+        if off_month is not None and bool(off_month) != bool(tx.get("is_exceptional")):
+            fields["is_exceptional"] = bool(off_month)
 
         if fields:
             plan.updates.append({"id": tx["id"], **fields})
 
-        # Ta participation validée en « Participation Charlotte » crée ta dépense perso
+        # Ta part du foyer validée en « Participation Charlotte » crée ta dépense perso
         if (
             review_kind(tx) == KIND_PARTICIPATION
             and affectation == str(BusinessId.HOUSEHOLD)
@@ -259,11 +376,11 @@ def plan_inbox_changes(
         ):
             plan.participations.append(participation_expense(tx))
 
-        # Règle : les prochaines opérations avec ce motif se rangent seules
-        pattern = (row.get("Motif") or "").strip()
-        if row.get("Règle") and chosen and pattern:
+        # Pareil la prochaine fois : les opérations avec ce mot se rangent seules
+        pattern = (row.get(COL_PATTERN) or "").strip()
+        if row.get(COL_RULE) and chosen_category and pattern:
             target = affectation if affectation != tx["business_id"] else None
-            plan.rules.append(build_rule(pattern, chosen, tx["business_id"], direction, target))
+            plan.rules.append(build_rule(pattern, chosen_category, tx["business_id"], direction, target))
 
     return plan
 

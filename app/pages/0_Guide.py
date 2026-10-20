@@ -34,80 +34,78 @@ def _scenario(title: str, situation: str, steps: list[str], result: str) -> None
 
 
 tab_start, tab_routine, tab_pages, tab_scenarios, tab_lexicon, tab_help = st.tabs([
-    "🚀 Démarrer", "📅 Ma routine", "🧭 Page par page", "🎬 Scénarios", "📖 Lexique", "🛟 Dépannage & limites",
+    "🚀 Démarrer", "📅 Ma routine", "🧭 Page par page", "🎬 Exemples", "📖 Les mots", "🛟 Dépannage & limites",
 ])
 
 # ===========================================================================
 # DÉMARRER
 # ===========================================================================
 with tab_start:
-    st.header("Le principe")
+    st.header("Chaque semaine, 3 gestes")
     st.markdown(
         """
-Tu n'as plus à noter tes dépenses. **Chaque semaine** :
+1. **🔄 Importer** : tu télécharges les relevés de tes banques (fichiers **CSV**) et tu les déposes.
+2. **📥 À classer** : pour chaque ligne, tu dis **pour qui elle compte** et sa **catégorie**, puis tu cliques sur **Enregistrer**.
+3. **👀 Regarder** : tu ouvres **Mon budget**, **Budget du foyer**, **Phi Rising** ou **Booth in Lyon**.
 
-1. tu télécharges les relevés de tes banques (fichiers **CSV**) ;
-2. tu les déposes sur la page **🔄 Sync** ;
-3. tu ouvres **📥 À traiter**, tu corriges ce qui est faux et tu cliques sur **Enregistrer**.
-
-L'app range toute seule ce qu'elle reconnaît. À chaque fois que tu lui apprends quelque chose
-(case **Règle**), elle le refait seule la fois suivante : ton travail diminue de semaine en semaine.
+Tu n'écris plus rien à la main. Et plus tu coches **Pareil la prochaine fois**, moins il reste de lignes à classer.
 """
     )
 
     st.header("Le circuit")
     st.code(
         """
- Relevés CSV            🔄 Sync                 📥 À traiter                   Budgets
- (BoursoBank,     ─►   importe, évite     ─►   tu choisis l'affectation  ─►   👤 Perso      🏠 Foyer
-  Crédit Mutuel)        les doublons            et la catégorie, puis          💼 Phi Rising  📸 Booth
-                                                « Enregistrer »                      │
-                                                      ▲                              ▼
-                                               🧭 Règles (l'app apprend)     🧮 Vue consolidée · 🏦 Patrimoine
+ Relevés CSV        🔄 Importer          📥 À classer                   Les budgets
+ (tes banques) ─►   l'app lit les   ─►   pour chaque ligne :       ─►   👤 Mon budget   🏠 Budget du foyer
+                    lignes, sans         « Ça compte pour » +           💼 Phi Rising    📸 Booth in Lyon
+                    doublon              catégorie, puis Enregistrer          │
+                                              ▲                              ▼
+                                       🧭 Règles (l'app apprend)       🧮 Tout ensemble · 🏦 Patrimoine
 
- Pour corriger après coup : 🔎 Transactions     Pour les catégories et la sauvegarde : ⚙️ Paramètres
+ Pour corriger après coup : 🔎 Transactions      Pour les catégories et la sauvegarde : ⚙️ Paramètres
 """,
         language=None,
     )
 
-    st.header("Tes comptes et leur budget")
+    st.header("Tes comptes")
     st.markdown(
         """
-| Compte | Banque | Budget | Comment il arrive dans l'app |
+Chaque ligne a un **compte** (« Payé avec ») et un budget où elle **compte** (« Ça compte pour »).
+Le compte propose un budget au départ ; **tu peux toujours le changer ligne par ligne**.
+
+| Compte | Banque | Ça compte pour (au départ) | Comment il arrive |
 |---|---|---|---|
-| Compte perso | BoursoBank | 👤 **Perso** | relevé CSV |
-| Compte commun | Crédit Mutuel | 🏠 **Foyer** | relevé CSV |
-| Livret épargne | BoursoBank | 👤 Perso (épargne) | relevé CSV, ou solde saisi à la main |
-| Compte pro coaching | Hello Bank | 💼 **Phi Rising** | saisie manuelle, récurrences, synchro Stripe |
-| Compte pro photobooth | Revolut | 📸 **Booth in Lyon** | saisie manuelle, récurrences, synchro Stripe |
+| Compte perso | BoursoBank | 👤 **Moi** | relevé CSV |
+| Compte commun | Crédit Mutuel | 🏠 **Notre foyer** | relevé CSV |
+| Livret épargne | BoursoBank | 👤 Moi (épargne) | relevé CSV, ou solde saisi à la main |
+| Compte pro coaching | Hello Bank | 💼 **Phi Rising** | relevé CSV (ou saisie à la main) |
+| Compte pro photobooth | Revolut | 📸 **Booth in Lyon** | saisie à la main, pour l'instant |
 """
     )
 
     st.header("Les quatre budgets")
     st.markdown(
         """
-- 👤 **Perso** : **ton** argent. Tes revenus comptent le **bénéfice de Phi Rising**, les virements reçus de
-  Booth in Lyon et les retraits du Livret. Ta **participation** au foyer y est une dépense (« Loyer »).
-- 🏠 **Foyer** : le compte commun. Ce que Bruno et toi y mettez, et tout ce qui en sort (prêt, courses,
-  assurances…). Les achats perso de Bruno et son épargne sont isolés.
+- 👤 **Moi** : **ton** argent. Tes revenus comptent le **bénéfice de Phi Rising**, les virements reçus de
+  Booth in Lyon et les retraits du Livret. Ta **part du foyer** y est une dépense (« Loyer »).
+- 🏠 **Notre foyer** : le compte commun. Ce que Bruno et toi y mettez, et tout ce qui en sort (prêt, courses,
+  assurances…).
 - 💼 **Phi Rising** et 📸 **Booth in Lyon** : tes deux activités, avec chiffre d'affaires, URSSAF, dépenses et bénéfice.
 
-Chaque opération appartient à **un seul budget** : c'est son **affectation**. Le compte donne une
-affectation par défaut (Bourso → Perso, commun → Foyer), que tu peux changer ligne par ligne : un achat perso
-payé avec la carte du commun va en Perso.
+Une ligne ne compte que dans **un seul** budget. Un achat perso payé avec la carte du commun ? Tu changes
+« Ça compte pour » en **👤 Moi**. Une dépense payée avec le compte pro mais qui est pour toi ? Pareil.
 """
     )
 
-    st.header("Première utilisation, pas à pas")
+    st.header("Première fois, pas à pas")
     st.markdown(
         """
-1. **🔄 Sync** → dépose le CSV de **BoursoBank**. La première fois, l'app demande à quel compte il correspond :
+1. **🔄 Importer** → dépose le CSV de **BoursoBank**. La première fois, l'app demande à quel compte il correspond :
    choisis *Compte perso (Boursobank)*. Elle s'en souviendra. Clique sur **Importer**.
-2. Même chose avec le CSV du **Crédit Mutuel** (garde le nom de fichier d'origine : c'est le numéro du compte) →
-   *Compte commun (Crédit Mutuel)*.
-3. **📥 À traiter** → passe les lignes en revue (voir les scénarios), puis **Enregistrer**.
+2. Même chose avec le CSV du **Crédit Mutuel** (garde le nom de fichier d'origine : c'est le numéro du compte) et celui de **Hello Bank**.
+3. **📥 À classer** → passe les lignes en revue, puis **Enregistrer**.
 4. **⚙️ Paramètres → Catégories → Remise en ordre** → aligne tes anciennes catégories sur la liste commune.
-5. **💰 Budget Perso → Vue mensuelle** et **🏠 Budget Foyer** : tes chiffres du mois.
+5. **👤 Mon budget → Vue mensuelle** et **🏠 Budget du foyer** : tes chiffres du mois.
 """
     )
 
@@ -120,28 +118,28 @@ with tab_routine:
         """
 | # | Où | Ce que tu fais |
 |---|---|---|
-| 1 | Sites des banques | Télécharge le CSV de **BoursoBank** et celui du **Crédit Mutuel** (la période depuis le dernier import suffit : les doublons sont ignorés). |
-| 2 | 🔄 **Sync** | Dépose les deux fichiers, vérifie l'aperçu (nouvelles opérations), clique sur **Importer**. |
-| 3 | 📥 **À traiter** | Regarde les lignes : corrige l'**affectation** ou la **catégorie** de celles qui sont fausses. Coche **Règle** pour un commerçant habituel. Clique sur **✅ Enregistrer**. |
-| 4 | 📥 **À traiter** (bas de page) | Vérifie le **✅ Contrôle des comptes** : chaque compte doit être complet. |
-| 5 | 💰 / 🏠 | Un coup d'œil à **Budget Perso** et **Budget Foyer** : où part l'argent ce mois-ci ? |
+| 1 | Sites des banques | Télécharge les CSV (la période depuis le dernier import suffit : les doublons sont ignorés). |
+| 2 | 🔄 **Importer** | Dépose les fichiers, regarde l'aperçu, clique sur **Importer**. |
+| 3 | 📥 **À classer** | Pour chaque ligne fausse, change **Ça compte pour** ou **Catégorie**. Coche **Pareil la prochaine fois** pour un commerçant habituel. Clique sur **✅ Enregistrer**. |
+| 4 | 📥 **À classer** (bas de page) | Vérifie le **Contrôle des comptes** : chaque compte doit être complet. |
+| 5 | 👤 / 🏠 | Un coup d'œil à **Mon budget** et **Budget du foyer** : où part l'argent ce mois-ci ? |
 """
     )
     st.header("Chaque mois — côté pro")
     st.markdown(
         """
-- **💼 Phi Rising** et **📸 Booth in Lyon** → onglet **Récurrences** → *À valider ce mois-ci* : valide tes modèles (abonnements, charges).
-- **🔄 Sync → Stripe** : synchronise les paiements du mois pour chaque activité.
-- **Vue mensuelle** : contrôle le CA, l'URSSAF estimée et le bénéfice.
-- Ta **participation** au foyer et ton virement vers BoursoBank ne se saisissent pas à la main : ils arrivent par les relevés.
+- **🔄 Importer → Stripe** : synchronise les paiements du mois pour chaque activité.
+- **💼 Phi Rising / 📸 Booth in Lyon → Vue mensuelle** : contrôle le CA, l'URSSAF estimée et le bénéfice.
+- **🧮 Simulateur** (dans chaque activité) : prévois les mois à venir.
+- Ta **part du foyer** et tes virements entre comptes ne se saisissent pas à la main : ils arrivent par les relevés.
 """
     )
     st.header("Exemple : un dimanche soir")
     st.info(
         """
-**20 h 00** — tu télécharges les deux CSV. **20 h 03** — tu les déposes sur Sync : *31 opérations lues, 18 déjà importées,
-13 nouvelles*. **20 h 04** — **Importer**. **20 h 05** — À traiter : 13 lignes, dont 4 à vérifier (ta carte sur le commun).
-Tu passes 2 achats en **Perso**, tu ranges « Boulangerie » en Courses avec **Règle** cochée, tu cliques **Enregistrer**.
+**20 h 00** — tu télécharges les CSV. **20 h 03** — tu les déposes sur Importer : *31 opérations lues, 18 déjà importées,
+13 nouvelles*. **20 h 04** — **Importer**. **20 h 05** — À classer : 13 lignes. Tu changes 2 achats du commun en **👤 Moi**,
+tu ranges « Boulangerie » en Courses avec **Pareil la prochaine fois** coché, tu cliques **Enregistrer**.
 **20 h 10** — contrôle des comptes ✅. Terminé.
 """
     )
@@ -153,13 +151,13 @@ with tab_pages:
     st.markdown("Déplie une page pour voir à quoi elle sert, ce que tu y vois, ce que tu y fais, et un exemple.")
 
     _page(
-        "🔄 Sync — importer tes relevés",
-        "Importer les relevés bancaires (CSV) et les paiements Stripe. Les opérations déjà importées ou déjà saisies à la main ne sont jamais recréées.",
+        "🔄 Importer — déposer tes relevés",
+        "Lire les relevés bancaires (CSV) et les paiements Stripe. Ce qui est déjà importé ou déjà saisi à la main n'est jamais recréé.",
         [
-            "une zone pour déposer un ou plusieurs CSV",
+            "une zone pour déposer un ou plusieurs CSV (BoursoBank, Crédit Mutuel, Hello Bank)",
             "pour chaque compte : opérations lues, déjà importées, déjà saisies à la main, nouvelles",
-            "la liste des nouvelles opérations avec ce qu'elles deviendront (🏠 Foyer · 🔎 À vérifier · 🔁 Virement interne · 💰 Budget)",
-            "un bandeau « N opérations à traiter » après l'import",
+            "la liste des nouvelles opérations avec ce qu'elles deviendront (🏠 Notre foyer · ↘️ Ta part du foyer · 🔁 Virement entre mes comptes · 💰 Budget)",
+            "un bandeau « N opérations à classer » après l'import",
             "plus bas, la synchro Stripe",
         ],
         [
@@ -170,27 +168,28 @@ with tab_pages:
         "Tu déposes un relevé Bourso déjà importé à moitié : l'aperçu annonce « 20 déjà importées, 6 nouvelles ». Seules les 6 sont enregistrées.",
     )
     _page(
-        "📥 À traiter — la boîte de réception",
-        "Valider en un endroit tout ce que l'import n'a pas pu décider seul.",
+        "📥 À classer — les lignes qui attendent",
+        "Ranger en un seul endroit tout ce que l'import n'a pas pu décider seul.",
         [
-            "des blocs par affectation : 🔁 Virement interne, 🏠 Foyer, 👤 Perso, 💼 Phi Rising, 📸 Booth",
-            "une colonne **Type** qui dit pourquoi la ligne est là : 💳 ta carte sur le commun · ↘️ ta participation · 🔁 virement entre tes comptes · 🏷️ à classer",
-            "✨ une catégorie suggérée d'après tes choix passés",
-            "en bas : le ✅ Contrôle des comptes et un menu 🛠️ Outils",
+            "**une seule liste**, avec pour chaque ligne : la date, **Payé avec** (le compte), le libellé, le montant",
+            "**Ça compte pour** : 🏠 Notre foyer · 👤 Moi · 💼 Phi Rising · 📸 Booth in Lyon · 🔁 Virement entre mes comptes",
+            "**Catégorie** (✨ = déjà proposée d'après tes choix passés) et la case **Pareil la prochaine fois**",
+            "**Plus de détails** : de / vers pour un virement, mot reconnu, libellé de la banque, « ne pas compter dans le mois »",
+            "en bas : le **Contrôle des comptes** et un menu 🛠️ Outils",
         ],
         [
-            "change l'**Affectation** d'une ligne si le budget est faux",
-            "choisis la **Catégorie** ; pour un virement, l'**Autre compte**",
-            "coche **Règle** (et vérifie le **Motif**) pour ranger les prochaines seules",
-            "clique sur **✅ Enregistrer** : les lignes à vérifier laissées telles quelles sont validées",
+            "change **Ça compte pour** si le budget est faux (tout ce qui vient du compte commun compte pour le foyer, sauf si tu le changes)",
+            "choisis la **Catégorie**",
+            "coche **Pareil la prochaine fois** pour qu'une règle range les prochaines seules",
+            "clique sur **✅ Enregistrer** : les lignes que tu n'as pas touchées sont validées telles quelles",
         ],
-        "Une ligne « PAIEMENT CB LYON DELIVEROO CARTE 3935 » arrive en 🏠 Foyer, 💳. Tu passes l'Affectation sur **Perso**, la catégorie sur *Restaurants & bars*, tu coches **Règle**. La prochaine fois, elle ira directement en Perso.",
+        "Une ligne « DELIVEROO » payée avec le compte commun arrive en 🏠 Notre foyer. Tu passes **Ça compte pour** sur **👤 Moi**, la catégorie sur *Restaurants & bars*, tu coches **Pareil la prochaine fois**. La prochaine fois, elle ira directement chez toi.",
     )
     _page(
-        "💰 Budget Perso",
+        "👤 Mon budget",
         "Suivre ton argent : revenus, dépenses, épargne, reste du mois.",
         [
-            "5 onglets : Transactions · Récurrences · Virement · Vue mensuelle · Vue globale",
+            "3 onglets : Transactions · Vue mensuelle · Vue globale",
             "**Vue mensuelle** : Revenus, Dépenses, Épargne, Différence, Reste du mois précédent, Total fin du mois",
             "**Où part l'argent** : barres par groupe, détail par catégorie, variation sur le mois précédent",
             "**Vue globale** : catégories × mois sur une période, courbe revenus / dépenses",
@@ -198,51 +197,66 @@ with tab_pages:
         [
             "corrige ou ajoute une opération à la main (espèces) dans **Transactions**",
             "choisis l'année et le mois en haut de la Vue mensuelle",
-            "active **Ajouter les dépenses communes du foyer** pour la vue d'ensemble (ta participation n'est comptée qu'une fois)",
+            "active **Ajouter les dépenses communes du foyer** pour la vue d'ensemble (ta part n'est comptée qu'une fois)",
         ],
         "En octobre : Revenus 3 120 €, Dépenses 1 480 €, Épargne 300 € → Différence 1 340 €. Tu vois que « Alimentation » monte de 12 % : tu ouvres le groupe pour voir quelle catégorie.",
     )
     _page(
-        "🏠 Budget Foyer",
+        "🏠 Budget du foyer",
         "Suivre le compte commun : ce que vous y mettez, ce qui en sort, qui paie quoi.",
         [
             "**Résumé** : rentrées, dépenses communes, perso et épargne de Bruno, différence, solde réel",
             "**Qui met quoi** (par origine) et **Qui a payé** (par carte, prélèvements)",
             "**Où part l'argent du foyer** et l'évolution sur l'année",
-            "**Opérations du mois** (corrigeables) et **Opérations exceptionnelles**",
+            "**Opérations du mois** (corrigeables) et **Opérations hors du mois**",
         ],
         [
             "corrige un libellé ou une catégorie dans **Opérations du mois**",
-            "coche **Exceptionnel** pour sortir un gros montant ponctuel du budget courant",
+            "coche **Ne pas compter dans le mois** pour sortir un gros montant ponctuel du budget courant",
         ],
         "Le relevé du commun contient le salaire de Bruno (2 614 €), ton virement de 950 €, le prêt (829 €) : « Qui met quoi » te montre 73 % Bruno, 27 % toi.",
     )
     _page(
         "💼 Phi Rising / 📸 Booth in Lyon — les activités",
-        "Piloter une micro-entreprise : CA, cotisations URSSAF, dépenses, bénéfice.",
+        "Piloter une micro-entreprise : CA, cotisations URSSAF, dépenses, bénéfice, et prévoir les mois à venir.",
         [
-            "mêmes 5 onglets que Budget Perso",
+            "5 onglets : Transactions · Virement · Vue mensuelle · Vue globale · **Simulateur**",
             "**Vue mensuelle** : CA brut, URSSAF, Dépenses, Bénéfices (avec le % de marge)",
             "dépenses par catégorie (avec variation) ; revenus par catégorie avec URSSAF et CA net",
             "**Vue globale** : alerte si le CA dépasse le seuil de la micro-entreprise",
         ],
         [
-            "valide les **récurrences** du mois",
-            "synchronise **Stripe** (page Sync) pour les paiements clients",
-            "ajoute à la main les virements clients et les charges",
+            "synchronise **Stripe** (page Importer) pour les paiements clients",
+            "ajoute à la main les virements clients et les charges, ou importe le relevé (Hello Bank)",
+            "utilise le **Simulateur** pour prévoir ce qu'il te restera",
         ],
-        "Phi Rising en octobre : CA brut 2 400 € (BNC), URSSAF 672 €, dépenses 180 € → bénéfice 1 548 €. Ce bénéfice est aussi compté dans les revenus de ton Budget Perso.",
+        "Phi Rising en octobre : CA brut 2 400 € (BNC), URSSAF 672 €, dépenses 180 € → bénéfice 1 548 €. Ce bénéfice est aussi compté dans les revenus de Mon budget.",
     )
     _page(
-        "🧮 Vue consolidée",
-        "Tout sur une page : Perso, Phi Rising, Booth in Lyon et Foyer côte à côte.",
+        "🧮 Simulateur (dans chaque activité)",
+        "Prévoir un mois : « si je fais ces prestations, combien me reste-t-il ? ». Rien n'est enregistré.",
+        [
+            "un tableau où tu ajoutes des prestations : mois, nom, type de revenu (BNC, BIC, ND…), montant, frais Stripe",
+            "tes **charges pro par mois**, proposées d'après tes 3 derniers mois",
+            "le total : chiffre d'affaires, URSSAF, charges, **ce qu'il te reste**, mois par mois",
+            "une alerte si ton CA de l'année dépasse le plafond de la micro-entreprise",
+        ],
+        [
+            "ajoute ou modifie des lignes (le « + » du tableau)",
+            "ajuste les charges du mois ; coche le versement libératoire si tu y es",
+        ],
+        "Novembre : 3 séances à 300 € (BNC). URSSAF 252 € (28 %), charges 120 € → il te reste 528 €.",
+    )
+    _page(
+        "🧮 Tout ensemble",
+        "Tout sur une page : Moi, Phi Rising, Booth in Lyon et Notre foyer côte à côte.",
         [
             "revenus, dépenses et solde de chaque budget",
             "l'évolution de l'année, budget par budget",
             "le détail par compte réel (flux du mois + solde) et les mouvements internes",
         ],
         ["choisis l'année et le mois en haut de la page"],
-        "Tu veux savoir ce que « rapporte » le mois : tu lis la colonne Total (Perso + Phi + Booth). Le Foyer est à part : il contient les revenus de Bruno.",
+        "Tu veux savoir ce que « rapporte » le mois : tu lis la colonne Total (Moi + Phi + Booth). Le foyer est à part : il contient les revenus de Bruno.",
     )
     _page(
         "🏦 Patrimoine",
@@ -263,7 +277,7 @@ with tab_pages:
         "🧭 Règles",
         "Voir, corriger et tester les règles qui rangent automatiquement les opérations.",
         [
-            "le tableau de toutes les règles : motif, budget visé, sens, catégorie, « Ranger dans », priorité, actif",
+            "le tableau de toutes les règles : mot reconnu, budget visé, sens, catégorie, « Ranger dans », priorité, actif",
             "deux compteurs : **Opérations** (libellés reconnus) et **Appliquée à** (victoires)",
             "le nombre de règles **masquées** (battues par une plus prioritaire)",
         ],
@@ -272,22 +286,22 @@ with tab_pages:
             "**Tester un libellé** pour voir quelle règle le range",
             "**Appliquer** les règles aux opérations déjà importées sans catégorie (aperçu avant)",
         ],
-        "Les règles de départ du foyer (Leclerc, Carrefour…) ne s'appliquent qu'au **Foyer**. Pour ranger aussi tes achats perso chez Leclerc, tu crées une règle avec **Budget visé = Perso**.",
+        "Les règles de départ du foyer (Leclerc, Carrefour…) ne s'appliquent qu'à **Notre foyer**. Pour ranger aussi tes achats perso chez Leclerc, tu crées une règle avec **Budget visé = Moi**.",
     )
     _page(
         "🔎 Transactions",
         "Retrouver n'importe quelle opération, la corriger, la déplacer, ou agir sur plusieurs d'un coup.",
         [
             "une liste de toutes les opérations, tous budgets confondus",
-            "des filtres : période, budgets, comptes, recherche (sans accents), sens, catégories, montant, à vérifier, exceptionnelles, virements",
+            "des filtres : période, budgets, comptes, recherche (sans accents), sens, catégories, montant, à vérifier, hors du mois, virements",
             "trois chiffres : nombre, rentrées, dépenses du résultat",
         ],
         [
-            "corrige **libellé, budget, catégorie, exceptionnel** dans le tableau, puis **Enregistrer**",
-            "coche des lignes (« Sél. ») puis applique un budget / une catégorie / « exceptionnel » à toutes",
+            "corrige **libellé, budget, catégorie, ne pas compter dans le mois** dans le tableau, puis **Enregistrer**",
+            "coche des lignes (« Sél. ») puis applique un budget / une catégorie à toutes",
             "exporte la recherche en CSV ; supprime avec confirmation",
         ],
-        "Tu cherches « leclerc » sur « Tout » : 14 lignes. Tu les coches, Budget → Foyer, **Appliquer** : elles quittent ton budget perso.",
+        "Tu cherches « leclerc » sur « Tout » : 14 lignes. Tu les coches, Budget → Notre foyer, **Appliquer** : elles quittent ton budget perso.",
     )
     _page(
         "⚙️ Paramètres",
@@ -302,11 +316,11 @@ with tab_pages:
             "applique la **Remise en ordre** (Médical → Santé…) en un clic",
             "télécharge une **sauvegarde** avant un gros changement",
         ],
-        "Tu fusionnes « Repas » dans « Repas du midi » : les 84 opérations, les règles et les récurrences concernées sont mises à jour d'un coup.",
+        "Tu fusionnes « Repas » dans « Repas du midi » : les 84 opérations et les règles concernées sont mises à jour d'un coup.",
     )
 
 # ===========================================================================
-# SCÉNARIOS
+# EXEMPLES
 # ===========================================================================
 with tab_scenarios:
     st.markdown("Des cas concrets, avec les gestes exacts. Les montants sont des exemples.")
@@ -314,75 +328,93 @@ with tab_scenarios:
     st.subheader("Les achats par carte")
     _scenario(
         "🥖 Du pain avec ta carte du compte commun",
-        "Le relevé du commun contient « PAIEMENT CB … MARIE BLACHERE CARTE 3935 » (3935 = ta carte). C'est sûrement une dépense du foyer, mais l'app ne connaît pas encore ce commerçant : elle te demande de confirmer.",
+        "Le relevé du commun contient « PAIEMENT CB … MARIE BLACHERE CARTE 3935 ». L'app ne connaît pas encore ce commerçant : la ligne attend dans À classer, déjà rangée dans 🏠 Notre foyer.",
         [
-            "Ouvre **À traiter** : la ligne est dans 🏠 Foyer, type 💳.",
-            "Laisse l'Affectation sur **Foyer**, choisis la catégorie **Courses**.",
-            "Coche **Règle** (motif « BLACHERE »), puis **Enregistrer**.",
+            "Ouvre **À classer** : la ligne dit « Payé avec : Compte commun », « Ça compte pour : 🏠 Notre foyer ».",
+            "Laisse **Notre foyer** et choisis la catégorie **Courses**.",
+            "Coche **Pareil la prochaine fois**, puis **Enregistrer**.",
         ],
-        "La ligne est dans le budget du foyer, catégorie Courses. Les prochains achats chez ce commerçant avec ta carte seront classés **sans que tu aies rien à faire**. (Leclerc, Carrefour, SNCF, Matmut… sont déjà connus : ils ne te sont pas demandés.)",
+        "La ligne est dans le budget du foyer, catégorie Courses. Les prochains achats chez ce commerçant seront classés **sans que tu aies rien à faire**. (Leclerc, Carrefour, SNCF, Matmut… sont déjà connus : ils ne te sont pas demandés.)",
     )
     _scenario(
-        "🍔 Un achat perso avec ta carte du compte commun",
+        "🍔 Un achat perso avec la carte du compte commun",
         "Tu as payé un Deliveroo avec la carte du commun : ce n'est pas une dépense du foyer, c'est la tienne.",
         [
-            "Dans **À traiter**, sur la ligne 💳, passe l'**Affectation** sur **Perso**.",
+            "Dans **À classer**, sur la ligne, change **Ça compte pour** en **👤 Moi**.",
             "Choisis la catégorie **Restaurants & bars**.",
-            "Coche **Règle** pour que les prochains Deliveroo avec cette carte aillent seuls en Perso, puis **Enregistrer**.",
+            "Coche **Pareil la prochaine fois** pour que les prochains Deliveroo aillent seuls chez toi, puis **Enregistrer**.",
         ],
-        "La dépense sort du foyer et entre dans ton **Budget Perso**. La règle créée range le commerçant en Perso et supprime la vérification pour lui.",
+        "La dépense sort du foyer et entre dans **Mon budget**. Tu décides ligne par ligne : l'app ne devine pas qui a payé.",
+    )
+    _scenario(
+        "💼 Une dépense payée avec le compte pro, mais qui est pour toi",
+        "Tu as payé un cadeau avec la carte du compte pro. Ce n'est pas une charge de ton activité.",
+        [
+            "Dans **À classer**, la ligne arrive en 💼 Phi Rising (« Payé avec : Compte pro »).",
+            "Change **Ça compte pour** en **👤 Moi** et choisis la catégorie.",
+        ],
+        "La dépense compte dans **Mon budget** et ne baisse pas le bénéfice de Phi Rising (qui compte déjà comme revenu chez toi) : elle n'est comptée qu'une fois.",
     )
     _scenario(
         "🧔 Les achats de Bruno avec sa carte (1295)",
         "Les paiements « CARTE 1295 » sont ceux de Bruno sur le compte commun.",
         [
-            "Rien à faire : ils sont classés **Foyer** automatiquement et n'entrent pas dans ton budget.",
-            "Si Bruno a fait un achat perso, classe-le dans la catégorie **Achats perso Bruno** ; son virement vers son épargne va dans **Épargne Bruno**.",
+            "Rien à faire : ils comptent pour 🏠 Notre foyer, comme tout le reste du compte commun.",
+            "Si Bruno a fait un achat perso, mets-le dans la catégorie **Achats perso Bruno** ; son virement vers son épargne va dans **Épargne Bruno**.",
         ],
-        "Ces deux catégories sont affichées **à part** des dépenses communes dans Budget Foyer.",
+        "Ces deux catégories sont affichées **à part** des dépenses communes dans Budget du foyer.",
     )
 
     st.subheader("Les virements")
     _scenario(
-        "🏠 Ta participation mensuelle de 950 € au compte commun",
-        "Chaque mois, tu verses 950 € de ton compte pro vers le commun : loyer et charges.",
+        "🏠 Ta part du foyer : 950 € par mois sur le compte commun",
+        "Chaque mois, tu verses 950 € vers le commun : loyer et charges.",
         [
             "N'enregistre **rien à la main**. Le virement arrive dans le relevé du commun.",
-            "Dans **À traiter** : ligne ↘️ « Ta participation », catégorie déjà **Participation Charlotte**. Clique sur **Enregistrer**.",
+            "Dans **À classer** : ligne ↘️ « Ta part du foyer », catégorie déjà **Participation Charlotte** (✨). Clique sur **Enregistrer**.",
         ],
-        "Dans le **foyer**, c'est une rentrée. Dans ton **Budget Perso**, l'app crée la dépense « Participation foyer » (catégorie Loyer), car ton revenu est déjà compté via le bénéfice de Phi Rising. Si tu l'avais saisie à la main dans les 10 jours, elle est rattachée, **sans doublon**.",
+        "Pour le **foyer**, c'est une rentrée. Dans **Mon budget**, l'app crée la dépense « Participation foyer » (catégorie Loyer), car ton revenu est déjà compté via le bénéfice de Phi Rising. Si tu l'avais saisie à la main dans les 10 jours, elle est rattachée, **sans doublon**.",
     )
     _scenario(
-        "💼 → 👤 Ton virement du compte pro vers BoursoBank",
-        "Tu te verses de l'argent de ton compte pro vers ton compte perso pour tes dépenses du mois.",
+        "💼 ➜ 👤 Ton virement du compte pro vers BoursoBank",
+        "Tu te verses de l'argent de ton compte pro vers ton compte perso.",
         [
-            "Il apparaît dans le relevé BoursoBank. Dans **À traiter**, bloc 🔁 Virement interne.",
-            "L'**Autre compte** est déjà rempli : *Compte pro coaching*. Vérifie, puis **Enregistrer**.",
+            "Il apparaît dans le relevé BoursoBank, avec **Ça compte pour : 🔁 Virement entre mes comptes**.",
+            "Les colonnes **De** et **Vers** se lisent comme une phrase : *De : Compte pro → Vers : Compte perso*. Vérifie l'autre compte, puis **Enregistrer**.",
         ],
-        "C'est un **virement interne** : ni une dépense ni un revenu supplémentaire (ton revenu est déjà compté via le bénéfice de Phi Rising). L'écriture côté pro est créée pour toi.",
+        "Ni une dépense ni un revenu en plus (ton revenu est déjà compté via le bénéfice de Phi Rising). L'écriture côté pro est créée pour toi.",
+    )
+    _scenario(
+        "💼 ➜ 🏠 Un virement du compte pro vers le compte commun",
+        "Tu verses 650 € du compte pro vers le commun.",
+        [
+            "Dans le relevé du pro : « Ça compte pour : 🔁 Virement entre mes comptes », *Vers : Compte commun*.",
+            "Clique sur **Enregistrer**. Le côté du commun vient de son propre relevé (la ligne ↘️ Ta part du foyer).",
+        ],
+        "La ligne du pro ne compte ni en dépense ni en revenu.",
     )
     _scenario(
         "🐖 Un virement vers ton Livret",
         "Tu mets 300 € de côté sur ton Livret.",
         [
             "Si tu importes aussi le relevé du Livret, les deux côtés sont **reliés automatiquement**.",
-            "Sinon, il arrive dans **À traiter** (🔁), avec le Livret proposé comme autre compte : **Enregistrer**.",
+            "Sinon, il arrive dans **À classer** (🔁), avec le Livret proposé comme autre compte : **Enregistrer**.",
         ],
-        "Le virement n'est pas une dépense : il est compté dans la ligne **Épargne** de ton Budget Perso et réduit ton « Total fin du mois ».",
+        "Le virement n'est pas une dépense : il est compté dans la ligne **Épargne** de Mon budget et réduit ton « Total fin du mois ».",
     )
     _scenario(
         "↩️ Un virement rejeté par la banque",
         "Tu vois « VIR INST … » suivi de « REJ VIR INST … » du même montant : la banque a refusé le virement puis rendu l'argent.",
         ["Rien à faire."],
-        "L'app **annule les deux lignes entre elles** (elles sont marquées virement interne) : aucun effet sur les budgets, et le solde reste juste.",
+        "L'app **annule les deux lignes entre elles** : aucun effet sur les budgets, et le solde reste juste.",
     )
     _scenario(
         "⚠️ Une erreur bancaire (aller-retour de 695 €)",
         "La banque a viré par erreur de l'argent du compte pro vers le commun, puis il est revenu : ça n'aurait jamais dû exister.",
         [
             "**Ne supprime pas** la ligne : elle a vraiment bougé le solde du compte.",
-            "Dans **À traiter**, passe son Affectation sur **Virement interne** et choisis l'**Autre compte** (ton compte pro).",
-            "Variante : coche **Exceptionnel** (Budget Foyer → Opérations du mois).",
+            "Dans **À classer**, passe **Ça compte pour** sur **🔁 Virement entre mes comptes** et choisis l'autre compte (dans *Plus de détails*).",
+            "Variante : coche **Ne pas compter dans le mois** (Budget du foyer → Opérations du mois).",
         ],
         "L'argent sorti est compensé : aucun budget n'est touché, et le **contrôle des comptes** reste ✅.",
     )
@@ -392,22 +424,22 @@ with tab_scenarios:
         "🎁 Une grosse rentrée ponctuelle (cagnotte du mariage, caution rendue)",
         "2 107 € arrivent sur le commun pour le mariage, et 1 230 € de caution : ça n'arrivera pas tous les mois.",
         [
-            "À partir de **1 000 €**, l'app coche déjà **Exceptionnel** pour toi.",
-            "Sous ce seuil : **Budget Foyer → Opérations du mois**, coche **Exceptionnel**, puis **Enregistrer les corrections**.",
+            "À partir de **1 000 €**, l'app coche déjà **Ne pas compter dans le mois** pour toi.",
+            "Sous ce seuil : **Budget du foyer → Opérations du mois**, coche **Ne pas compter dans le mois**, puis **Enregistrer les corrections**.",
         ],
-        "La ligne n'entre plus dans le résumé du mois ni dans les graphiques (qui ne seraient plus comparables d'un mois à l'autre), mais elle reste dans le **solde réel**. Elle est listée dans « Opérations exceptionnelles ».",
+        "La ligne n'entre plus dans le résumé du mois ni dans les graphiques, mais elle reste dans le **solde réel**. Elle est listée dans « Opérations hors du mois ».",
     )
     _scenario(
         "📅 Une dépense annuelle (assurance, taxe)",
         "Tu paies 420 € d'assurance une fois par an.",
-        ["Classe-la normalement (ex. **Assurance habitation**). **Ne la coche pas** « Exceptionnel »."],
+        ["Classe-la normalement (ex. **Assurance habitation**). **Ne coche pas** « Ne pas compter dans le mois »."],
         "Elle revient chaque année : elle fait partie de ton budget. Elle crée simplement un pic dans son mois.",
     )
     _scenario(
         "💵 Une dépense en espèces",
         "Tu paies 15 € en espèces : aucun relevé ne la contiendra.",
         [
-            "**💰 Budget Perso → Transactions** : clique sur **➕ Ajouter une transaction**, remplis la ligne, **Enregistrer**.",
+            "**👤 Mon budget → Transactions** : clique sur **➕ Ajouter une transaction**, remplis la ligne, **Enregistrer**.",
         ],
         "C'est le seul cas où tu saisis à la main une dépense perso : tout le reste vient des relevés.",
     )
@@ -418,16 +450,26 @@ with tab_scenarios:
         "Même montant à ±4 jours : l'app **rattache** le relevé à ta saisie au lieu de créer une deuxième ligne. Ton libellé et ta catégorie sont gardés.",
     )
 
-    st.subheader("Corriger et entretenir")
+    st.subheader("Prévoir, corriger et entretenir")
+    _scenario(
+        "🧮 Prévoir un mois côté pro",
+        "Tu as trois séances prévues en novembre et tu veux savoir ce qu'il te restera.",
+        [
+            "Ouvre **💼 Phi Rising → Simulateur**.",
+            "Dans le tableau, ajoute tes prestations : mois, nom, type de revenu (BNC), montant.",
+            "Vérifie les **charges pro par mois** proposées, puis lis **Il te reste**.",
+        ],
+        "L'URSSAF est calculée avec les mêmes taux que tes vrais chiffres. Rien n'est enregistré : c'est un brouillon.",
+    )
     _scenario(
         "🔎 Retrouver et corriger des opérations après coup",
-        "Tu t'aperçois que tous tes « Leclerc » du mois sont rangés en Perso alors que c'est le foyer.",
+        "Tu t'aperçois que tous tes « Leclerc » du mois sont rangés chez toi alors que c'est le foyer.",
         [
             "Page **🔎 Transactions**, période *Tout* (ou le mois), recherche « leclerc ».",
             "Coche les lignes dans la colonne **Sél.**.",
-            "Plus bas : **Budget → Foyer**, puis **Appliquer aux N ligne(s)**.",
+            "Plus bas : **Budget → Notre foyer**, puis **Appliquer aux N ligne(s)**.",
         ],
-        "Les lignes quittent le budget perso. Si une catégorie n'existe pas dans le foyer pour certaines, l'app te le dit et ne touche pas à celles-là.",
+        "Les lignes quittent ton budget perso. Si une catégorie n'existe pas dans le foyer pour certaines, l'app te le dit et ne touche pas à celles-là.",
     )
     _scenario(
         "🧹 Aligner tes anciennes catégories sur la liste commune",
@@ -437,7 +479,7 @@ with tab_scenarios:
             "Décoche les renommages que tu ne veux pas ; vérifie le nombre d'opérations concernées.",
             "Clique sur **Appliquer**. Fais d'abord une **sauvegarde** (Paramètres → Sauvegarde).",
         ],
-        "Toutes les opérations, règles et récurrences concernées sont mises à jour d'un coup : « Médical » devient « Santé » partout. Les catégories protégées (Épargne, BNC, BIC, ND, Évenement Privé, Stripe) ne sont jamais renommées.",
+        "Toutes les opérations et les règles concernées sont mises à jour d'un coup : « Médical » devient « Santé » partout. Les catégories protégées (Épargne, BNC, BIC, ND, Évenement Privé, Stripe) ne sont jamais renommées.",
     )
     _scenario(
         "🧭 Une règle range mal certaines opérations",
@@ -445,7 +487,7 @@ with tab_scenarios:
         [
             "Page **🧭 Règles** : regarde « Appliquée à » et le compteur de règles **masquées**.",
             "Utilise **Tester un libellé** avec le texte du relevé pour voir quelle règle gagne.",
-            "Corrige le motif, le budget visé ou la priorité, puis **Enregistrer**.",
+            "Corrige le mot reconnu, le budget visé ou la priorité, puis **Enregistrer**.",
         ],
         "Une règle qui a des opérations mais « Appliquée à » = 0 est battue par une règle plus prioritaire : monte sa priorité ou supprime l'autre.",
     )
@@ -455,46 +497,37 @@ with tab_scenarios:
         [
             "Ouvre le **Détail** : il indique la période concernée.",
             "Page **🔎 Transactions**, filtre sur ce compte et cette période : cherche ce qui manque ou ce qui est en trop.",
-            "Dépose de nouveau le relevé de cette période sur **Sync** : les opérations manquantes sont ajoutées, sans doublon.",
+            "Dépose de nouveau le relevé de cette période sur **Importer** : les opérations manquantes sont ajoutées, sans doublon.",
         ],
         "Cause fréquente : une période non importée, une opération supprimée, ou une saisie manuelle qui ne correspond à rien sur le compte.",
     )
-    _scenario(
-        "💼 Le début de mois côté pro",
-        "C'est le 1er du mois : il faut mettre à jour Phi Rising et Booth in Lyon.",
-        [
-            "**💼 Phi Rising → Récurrences** : dans *À valider ce mois-ci*, valide les modèles.",
-            "**🔄 Sync → Stripe** : synchronise les paiements du mois.",
-            "**Vue mensuelle** : lis le CA brut, l'URSSAF estimée et le bénéfice.",
-        ],
-        "Le bénéfice de Phi Rising alimente tes revenus dans Budget Perso.",
-    )
 
 # ===========================================================================
-# LEXIQUE
+# LES MOTS
 # ===========================================================================
 with tab_lexicon:
     st.markdown(
         """
 | Mot | Ce que ça veut dire |
 |---|---|
-| **Affectation / Budget** | Le budget où compte une opération : Perso, Foyer, Phi Rising ou Booth in Lyon. Une opération n'en a qu'un. |
+| **Payé avec** | Le compte d'où vient la ligne (le relevé où elle apparaît). Tu ne le changes pas. |
+| **Ça compte pour** | Le budget où la ligne compte : Notre foyer, Moi, Phi Rising ou Booth in Lyon. Une ligne n'en a qu'un. |
+| **Virement entre mes comptes** 🔁 | De l'argent déplacé entre deux de tes comptes : ni dépense ni revenu. **De** = d'où il part, **Vers** = où il arrive. |
 | **Catégorie** | Le type de dépense ou de revenu (Courses, Loyer, Salaire…). Chaque budget a sa liste, en grande partie commune. |
 | **Groupe** | Un regroupement de catégories (Logement, Alimentation, Transport…), pour lire les graphiques à deux niveaux. |
-| **Règle** | « Si le libellé contient X, alors catégorie Y (et budget Z) ». Elle s'applique à l'import. |
-| **Motif** | Le texte cherché dans le libellé par une règle (ex. LECLERC). |
+| **Pareil la prochaine fois** | Crée une **règle** : les prochaines lignes avec le même mot seront rangées toutes seules. |
+| **Règle** | « Si le libellé contient tel mot, alors telle catégorie (et tel budget) ». Elle s'applique à l'import. |
+| **Mot reconnu** | Le texte cherché dans le libellé par une règle (ex. LECLERC). |
 | **Priorité** | L'ordre des règles : quand plusieurs s'appliquent, la plus haute gagne. |
-| **Libellé banque** | Le texte brut de la banque. Le **libellé** affiché peut être nettoyé ou renommé par toi. |
-| **À vérifier** 🔎 | Une opération qui demande une décision : ta carte sur le commun, ta participation, un virement. |
-| **Virement interne** 🔁 | De l'argent déplacé entre deux de tes comptes : ni dépense ni revenu. |
-| **Participation** | Ton virement mensuel au compte commun. C'est une rentrée du foyer et ta dépense « Loyer » dans ton budget perso. |
-| **Exceptionnel** | Une opération ponctuelle et importante, sortie du budget courant mais gardée dans le solde. |
+| **Libellé de la banque** | Le texte brut de la banque. Le **libellé** affiché peut être nettoyé ou renommé par toi. |
+| **Ta part du foyer** ↘️ | Ton virement mensuel au compte commun. C'est une rentrée du foyer et ta dépense « Loyer » dans Mon budget. |
+| **Ne pas compter dans le mois** | Une opération ponctuelle et importante, sortie du budget courant mais gardée dans le solde. |
 | **Contrôle des comptes** | La vérification que les opérations de l'app expliquent la variation réelle du solde de la banque. |
-| **Récurrence** | Un modèle d'opération (abonnement, salaire) validé chaque mois. |
-| **Bénéfice (Phi Rising)** | CA − URSSAF − dépenses. Il compte comme revenu dans ton budget perso. |
+| **Bénéfice (Phi Rising)** | CA − URSSAF − dépenses. Il compte comme revenu dans Mon budget. |
 | **URSSAF** | Les cotisations de micro-entrepreneur, estimées au taux de chaque catégorie de revenu. |
+| **Simulateur** | Un calculateur pour prévoir ce qu'il te restera, sans rien enregistrer. |
 | **Importée / saisie à la main** | Une opération venue d'un relevé, ou notée par toi. Une saisie est rattachée au relevé correspondant. |
-| **✨** | Une catégorie suggérée d'après tes choix passés. À vérifier. |
+| **✨** | Une catégorie déjà proposée d'après tes choix passés. À vérifier d'un coup d'œil. |
 """
     )
 
@@ -516,7 +549,7 @@ with tab_help:
         (
             "Je ne trouve pas une opération",
             "Page **🔎 Transactions** : période *Tout*, recherche par mot du libellé. Elle est peut-être dans un autre budget "
-            "(Foyer au lieu de Perso) ou comptée comme virement interne (active « Inclure les virements internes »).",
+            "(Notre foyer au lieu de Moi) ou comptée comme virement entre tes comptes (active « Inclure les virements »).",
         ),
         (
             "Mon import affiche « 0 nouvelle »",
@@ -528,7 +561,7 @@ with tab_help:
         ),
         (
             "Un chiffre de mon budget me semble faux",
-            "Cherche une opération mal affectée (Foyer / Perso), un virement non reconnu (compté comme dépense), ou une saisie "
+            "Cherche une opération mal rangée (Notre foyer / Moi), un virement non reconnu (compté comme dépense), ou une saisie "
             "en double d'un relevé. La page **🔎 Transactions** permet de tout passer en revue.",
         ),
         (
@@ -545,20 +578,20 @@ with tab_help:
         """
 - **Les remboursements** : un achat remboursé compte pour l'instant comme un **revenu** (il gonfle les revenus du mois) au lieu
   de réduire la dépense. À venir.
-- **L'indicateur « Exceptionnel »** n'est pris en compte que dans le **Foyer**. Dans Perso et les activités pro, il n'y a pas
+- **« Ne pas compter dans le mois »** n'est pris en compte que dans **Notre foyer**. Dans Mon budget et les activités pro, il n'y a pas
   d'équivalent pour l'instant.
 - **Les projets** (« Mariage », « Maison ») ne sont pas des étiquettes : on ne peut pas encore voir ce qu'un projet a rapporté
   et coûté.
-- **La synchronisation bancaire automatique** : les relevés se déposent à la main (CSV). C'est une piste à étudier si la
-  routine hebdomadaire devient pesante.
-- **Les comptes pro** ne s'importent pas : ils se saisissent à la main, avec les récurrences et Stripe.
+- **La synchronisation bancaire automatique** : les relevés se déposent à la main (CSV).
+- **Le relevé du compte pro** (Hello Bank) se lit, mais l'URSSAF que tu paies et les versements Stripe sont déjà dans le calcul
+  du bénéfice : les importer tels quels ferait un **doublon**. Revolut (Booth in Lyon) ne s'importe pas encore.
 """
     )
     st.header("Bonnes habitudes")
     st.markdown(
         """
 - Fais le point **une fois par semaine** plutôt qu'une grosse fois par mois : les relevés sont courts et tu te souviens des achats.
-- Prends l'habitude de cocher **Règle** pour les commerçants habituels : c'est ce qui fait baisser ton travail.
+- Prends l'habitude de cocher **Pareil la prochaine fois** pour les commerçants habituels : c'est ce qui fait baisser ton travail.
 - Avant un gros changement (suppression en groupe, remise en ordre), fais une **sauvegarde**.
 - Ne saisis **pas à la main** ce qui arrive par un relevé, ni tes virements entre comptes : ils sont reconnus à l'import.
 """

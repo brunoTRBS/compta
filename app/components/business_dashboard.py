@@ -9,7 +9,7 @@ import streamlit as st
 
 from app.components.breakdown_section import render_spending_breakdown
 from app.components.help import tab_help
-from app.components.recurring_section import render_recurring_section
+from app.components.simulator_section import render_simulator
 from app.components.transaction_table import render_editable_transactions
 from app.components.transfer_section import render_transfer_section
 from src.config import BusinessId
@@ -34,21 +34,13 @@ _MONTHS_MAP: dict[str, int] = {v: k for k, v in _MONTH_LABELS.items()}
 
 
 def render_dashboard(business_id: BusinessId, business_name: str) -> None:
-    tab_tx, tab_recurring, tab_transfer, tab_monthly, tab_global = st.tabs(
-        ["🏷️ Transactions", "📅 Récurrences", "🔁 Virement", "📅 Vue mensuelle", "📊 Vue globale"]
+    tab_tx, tab_transfer, tab_monthly, tab_global, tab_simulator = st.tabs(
+        ["🏷️ Transactions", "🔁 Virement", "📅 Vue mensuelle", "📊 Vue globale", "🧮 Simulateur"]
     )
 
     with tab_tx:
         tab_help("pro_transactions")
         _render_transactions(business_id)
-
-    with tab_recurring:
-        tab_help("recurrences")
-        st.caption(
-            "Définis un modèle une fois (loyer, abonnement...), "
-            "puis valide-le chaque mois en un clic au lieu de tout retaper."
-        )
-        render_recurring_section(key_prefix=f"biz_{business_id}", business_id_filter=str(business_id))
 
     with tab_transfer:
         tab_help("virement")
@@ -61,6 +53,10 @@ def render_dashboard(business_id: BusinessId, business_name: str) -> None:
     with tab_global:
         tab_help("pro_globale")
         _render_global_view(business_id)
+
+    with tab_simulator:
+        tab_help("pro_simulateur")
+        render_simulator(business_id)
 
 
 # ---------------------------------------------------------------------------

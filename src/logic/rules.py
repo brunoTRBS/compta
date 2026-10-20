@@ -10,7 +10,7 @@ from typing import Any
 from src.logic.categories import SCOPE_LABELS
 from src.logic.categorizer import first_matching_rule, rule_applies
 
-BUDGET_LABELS: dict[str | None, str] = {None: "Tous (hors foyer)", **SCOPE_LABELS}
+BUDGET_LABELS: dict[str | None, str] = {None: "Tous (sauf le foyer)", **SCOPE_LABELS}
 DIRECTION_LABELS: dict[str | None, str] = {None: "Les deux", "expense": "Dépenses", "income": "Revenus"}
 TARGET_LABELS: dict[str | None, str] = {None: "Reste dans son budget", **SCOPE_LABELS}
 

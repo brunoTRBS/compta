@@ -42,9 +42,9 @@ from src.services.supabase import (
     update_account_bank_number,
 )
 
-st.set_page_config(page_title="Synchronisation", page_icon="🔄", layout="wide")
+st.set_page_config(page_title="Importer", page_icon="🔄", layout="wide")
 require_auth()
-page_title("Synchronisation des données", "sync")
+page_title("Importer tes relevés", "sync")
 st.caption("Importe les relevés bancaires (CSV BoursoBank, Crédit Mutuel, Hello Bank) et les paiements (Stripe).")
 
 _BANK_LABELS = {BANK_BOURSOBANK: "BoursoBank", BANK_HELLO_BANK: "Hello Bank"}
@@ -86,9 +86,9 @@ def _get_existing_bank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _treatment(row: dict[str, Any]) -> str:
     """Ce que l'import fera de la ligne, pour l'aperçu."""
     if is_household(row):
-        return "🔎 À vérifier" if row.get("needs_review") else "🏠 Foyer (hors budget)"
+        return "↘️ Ta part du foyer" if row.get("needs_review") else "🏠 Notre foyer"
     if is_transfer_like(row):
-        return "🔁 Virement interne"
+        return "🔁 Virement entre mes comptes"
     return "💰 Budget"
 
 
@@ -103,14 +103,13 @@ def _render_report(report) -> None:
     if report.pending_manual:
         st.info(
             f"{report.pending_manual} transaction(s) sans catégorie — "
-            "rendez-vous sur Budget Perso ou une page activité pour les traiter."
+            "rendez-vous sur la page À classer pour les classer."
         )
     if report.transfers_detected:
-        st.success(f"{report.transfers_detected} virement(s) interne(s) reconnu(s) automatiquement.")
+        st.success(f"{report.transfers_detected} virement(s) entre tes comptes reconnu(s) automatiquement.")
     if report.transfers_to_review:
         st.info(
-            f"{report.transfers_to_review} virement(s) à confirmer — voir « Virements à vérifier » "
-            "plus bas."
+            f"{report.transfers_to_review} virement(s) à confirmer — ils t'attendent dans la page À classer."
         )
     for err in report.errors:
         st.error(err)
@@ -195,9 +194,8 @@ for uploaded_file in uploaded_files or []:
             if is_joint:
                 mapped = classify_joint_transactions(mapped)
                 st.caption(
-                    "Compte commun : les opérations sont enregistrées comme dépenses du foyer, "
-                    "hors budget perso. Tes paiements carte et tes virements seront à vérifier "
-                    "juste en dessous après l'import."
+                    "Compte commun : tout compte pour le foyer. Dans À classer, tu peux changer "
+                    "une ligne pour qu'elle compte pour toi (Moi) ou pour une activité."
                 )
             manual_candidates = read_manual_candidates(manual_scope, rows, MANUAL_MATCH_WINDOW_DAYS)
             new_rows, n_duplicates = deduplicate(mapped, existing_ids)
@@ -257,7 +255,7 @@ if import_btn:
                     manual_transactions=read_manual_candidates(batch["account"]["owner"], batch["rows"], MANUAL_MATCH_WINDOW_DAYS),
                     existing_bank_transactions=_get_existing_bank_rows(batch["rows"]),
                 )
-                # Solde réel en fin de relevé : sert au contrôle des comptes (page À traiter)
+                # Solde réel en fin de relevé : sert au contrôle des comptes (page À classer)
                 closing = statement_closing_balance(batch["rows"])
                 if closing and not report.errors:
                     try:
@@ -282,16 +280,14 @@ st.caption(
 try:
     _pending_df = inbox_rows(read_transactions(include_transfers=True))
     _n_pending = _pending_df.height
-    _n_review = _pending_df.filter(pl.col("needs_review")).height if _n_pending else 0
 except Exception:
-    _n_pending = _n_review = 0
+    _n_pending = 0
 
 if _n_pending:
     st.info(
-        f"**{_n_pending} opération(s) à traiter** dont {_n_review} à vérifier (ta carte sur le "
-        "commun, ta participation, virements entre tes comptes)."
+        f"**{_n_pending} opération(s) à classer** : choisis pour qui elles comptent et leur catégorie."
     )
-    st.page_link("pages/1_A_Traiter.py", label="Aller à la page À traiter", icon="📥")
+    st.page_link("pages/1_A_Traiter.py", label="Aller à la page À classer", icon="📥")
 
 st.divider()
 
@@ -347,5 +343,5 @@ st.divider()
 
 st.caption(
     "Les transactions importées apparaissent immédiatement sur les pages "
-    "Phi Rising, Booth in Lyon et Budget Perso après synchronisation."
+    "Phi Rising, Booth in Lyon et Mon budget après l'import."
 )

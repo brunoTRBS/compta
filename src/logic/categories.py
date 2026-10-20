@@ -20,8 +20,8 @@ PROTECTED_CATEGORIES = frozenset({"Épargne", "BNC", "BIC", "ND", "Évenement Pr
 SHARED_SCOPES = ("personal", "household")
 
 SCOPE_LABELS: dict[str, str] = {
-    "personal": "Perso",
-    "household": "Foyer",
+    "personal": "Moi",
+    "household": "Notre foyer",
     "phi_rising": "Phi Rising",
     "booth_in_lyon": "Booth in Lyon",
 }

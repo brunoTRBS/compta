@@ -69,7 +69,7 @@ except Exception as exc:
     st.stop()
 
 if all_df.is_empty():
-    st.info("Aucune opération pour l'instant : importe un relevé depuis la page Sync.")
+    st.info("Aucune opération pour l'instant : importe un relevé depuis la page Importer.")
     st.stop()
 
 account_names = {a["id"]: a["name"] for a in accounts}
@@ -107,7 +107,7 @@ min_amount = col_min.number_input("Montant min (€)", min_value=0.0, value=0.0,
 
 col_t1, col_t2, col_t3 = st.columns(3)
 only_review = col_t1.toggle("À vérifier seulement", key="tx_review")
-only_exceptional = col_t2.toggle("Exceptionnelles seulement", key="tx_exceptional")
+only_exceptional = col_t2.toggle("Hors du mois seulement", key="tx_exceptional")
 include_transfers = col_t3.toggle("Inclure les virements internes", key="tx_transfers")
 
 filtered = filter_transactions(
@@ -168,7 +168,7 @@ editor_df = pl.DataFrame({
     "Montant": [r["amount"] for r in rows],
     "Budget": [SCOPE_LABELS.get(r["business_id"], r["business_id"]) for r in rows],
     "Catégorie": [r.get("category") or "" for r in rows],
-    "Exceptionnel": [bool(r.get("is_exceptional")) for r in rows],
+    "Ne pas compter dans le mois": [bool(r.get("is_exceptional")) for r in rows],
 })
 edited = st.data_editor(
     editor_df.to_pandas(),
@@ -182,7 +182,7 @@ edited = st.data_editor(
         "Montant": st.column_config.NumberColumn(format="%.2f €"),
         "Budget": st.column_config.SelectboxColumn(options=list(SCOPE_LABELS.values()), required=True),
         "Catégorie": st.column_config.SelectboxColumn(options=["", *category_names]),
-        "Exceptionnel": st.column_config.CheckboxColumn(),
+        "Ne pas compter dans le mois": st.column_config.CheckboxColumn(),
     },
     key=f"tx_editor_v{version}",
 )
@@ -215,7 +215,7 @@ else:
     col_b, col_c, col_e = st.columns(3)
     bulk_budget = col_b.selectbox("Budget", [_UNCHANGED, *SCOPE_LABELS.values()], key="tx_bulk_budget")
     bulk_category = col_c.selectbox("Catégorie", [_UNCHANGED, *category_names], key="tx_bulk_category")
-    bulk_exceptional = col_e.selectbox("Exceptionnel", [_UNCHANGED, "Oui", "Non"], key="tx_bulk_exceptional")
+    bulk_exceptional = col_e.selectbox("Ne pas compter dans le mois", [_UNCHANGED, "Oui", "Non"], key="tx_bulk_exceptional")
 
     if st.button(f"Appliquer aux {len(selected_rows)} ligne(s)", key="tx_bulk_apply"):
         plan = plan_bulk(
@@ -239,7 +239,7 @@ else:
         st.warning(
             f"{n_imported} de ces opérations viennent d'un relevé : elles **réapparaîtront** si tu "
             "dépose de nouveau le même relevé, et le contrôle de solde signalera un écart. "
-            "Pour les sortir des budgets sans les supprimer, coche plutôt « Exceptionnel »."
+            "Pour les sortir des budgets sans les supprimer, coche plutôt « Ne pas compter dans le mois »."
         )
     if groups:
         st.caption(f"{len(groups)} virement(s) interne(s) : leurs deux écritures seront supprimées.")

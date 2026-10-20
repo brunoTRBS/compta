@@ -129,20 +129,20 @@ class TestPlanEdits:
     def test_no_change(self):
         tx = self._tx()
         edited = [{"id": "1", "Libellé": "Café", "Budget": "personal", "Catégorie": "Restaurants & bars",
-                   "Exceptionnel": False}]
+                   "Ne pas compter dans le mois": False}]
         assert plan_edits([tx], edited, CATEGORIES).updates == []
 
     def test_rename_recategorize_exceptional(self):
         tx = self._tx()
         edited = [{"id": "1", "Libellé": "Café gare", "Budget": "personal", "Catégorie": "Courses",
-                   "Exceptionnel": True}]
+                   "Ne pas compter dans le mois": True}]
         assert plan_edits([tx], edited, CATEGORIES).updates == [
             {"id": "1", "label": "Café gare", "category": "Courses", "is_exceptional": True}]
 
     def test_move_to_another_budget_clears_category_missing_there(self):
         tx = self._tx()  # Restaurants & bars n'existe pas au foyer
         edited = [{"id": "1", "Libellé": "Café", "Budget": "household", "Catégorie": "Restaurants & bars",
-                   "Exceptionnel": False}]
+                   "Ne pas compter dans le mois": False}]
         plan = plan_edits([tx], edited, CATEGORIES)
         assert plan.updates == [{"id": "1", "business_id": "household", "category": None}]
         assert "Restaurants & bars" in plan.errors[0]
@@ -150,7 +150,7 @@ class TestPlanEdits:
     def test_move_keeps_category_valid_in_both(self):
         tx = self._tx(category="Courses")
         edited = [{"id": "1", "Libellé": "Café", "Budget": "household", "Catégorie": "Courses",
-                   "Exceptionnel": False}]
+                   "Ne pas compter dans le mois": False}]
         assert plan_edits([tx], edited, CATEGORIES).updates == [{"id": "1", "business_id": "household"}]
 
 

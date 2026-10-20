@@ -2,7 +2,6 @@
 
 from src.config import PARTICIPATION_CATEGORY
 from src.logic.household import (
-    KIND_CARD,
     KIND_PARTICIPATION,
     classify_joint_transactions,
     participation_expense,
@@ -25,14 +24,10 @@ DIRECT_DEBIT = _tx("PRLV SEPA MATMUT ROUEN 2026100500009840010002361", -73.19)
 
 
 class TestReviewKind:
-    def test_own_card(self):
-        assert review_kind(OWN_CARD) == KIND_CARD
-
-    def test_other_card_needs_no_review(self):
+    def test_cards_need_no_review(self):
+        """Tout compte pour le foyer par défaut : aucune carte n'est traitée à part."""
+        assert review_kind(OWN_CARD) is None
         assert review_kind(OTHER_CARD) is None
-
-    def test_card_number_must_match_exactly(self):
-        assert review_kind(_tx("PAIEMENT CB LYON CARTE 39351 HIR0", -1.0)) is None
 
     def test_transfer_from_her_is_participation(self):
         assert review_kind(PARTICIPATION) == KIND_PARTICIPATION
@@ -54,7 +49,7 @@ class TestReviewKind:
 def test_classify_marks_everything_household():
     result = classify_joint_transactions([OWN_CARD, OTHER_CARD, PARTICIPATION, SALARY])
     assert all(r["business_id"] == "household" for r in result)
-    assert [r["needs_review"] for r in result] == [True, False, True, False]
+    assert [r["needs_review"] for r in result] == [False, False, True, False]
 
 
 def test_participation_expense():
